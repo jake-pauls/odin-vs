@@ -1,0 +1,7 @@
+bin/
+obj/
+.vs/
+*.vsix
+.claude/settings.local.json
+samples/**/*.exe
+samples/**/*.pdb
