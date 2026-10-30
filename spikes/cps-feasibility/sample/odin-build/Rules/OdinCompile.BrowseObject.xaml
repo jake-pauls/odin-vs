@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Rule Name="OdinCompile"
+      Description="File Properties"
+      DisplayName="General"
+      PageTemplate="generic"
+      PropertyPagesHidden="true"
+      xmlns="http://schemas.microsoft.com/build/2009/properties">
+  <Rule.DataSource>
+    <DataSource HasConfigurationCondition="False"
+                ItemType="OdinCompile"
+                Persistence="ProjectFile"
+                SourceOfDefaultValue="AfterContext" />
+  </Rule.DataSource>
+
+  <DynamicEnumProperty Name="{}{ItemType}"
+                       Description="How the file relates to the build."
+                       DisplayName="Build Action"
+                       EnumProvider="ItemTypes" />
+
+  <StringProperty Name="FileNameAndExtension"
+                  Description="Name of the file or folder."
+                  DisplayName="File Name"
+                  ReadOnly="true">
+    <StringProperty.DataSource>
+      <DataSource ItemType="OdinCompile"
+                  PersistedName="FileNameAndExtension"
+                  Persistence="Intrinsic"
+                  SourceOfDefaultValue="AfterContext" />
+    </StringProperty.DataSource>
+  </StringProperty>
+
+  <StringProperty Name="FullPath"
+                  Description="Location of the file."
+                  DisplayName="Full Path"
+                  ReadOnly="true">
+    <StringProperty.DataSource>
+      <DataSource ItemType="OdinCompile"
+                  PersistedName="FullPath"
+                  Persistence="Intrinsic"
+                  SourceOfDefaultValue="AfterContext" />
+    </StringProperty.DataSource>
+  </StringProperty>
+
+  <StringProperty Name="Identity"
+                  ReadOnly="true"
+                  Visible="false">
+    <StringProperty.DataSource>
+      <DataSource ItemType="OdinCompile"
+                  PersistedName="Identity"
+                  Persistence="Intrinsic"
+                  SourceOfDefaultValue="AfterContext" />
+    </StringProperty.DataSource>
+  </StringProperty>
+
+  <StringProperty Name="URL"
+                  ReadOnly="true"
+                  Visible="false">
+    <StringProperty.DataSource>
+      <DataSource ItemType="OdinCompile"
+                  PersistedName="FullPath"
+                  Persistence="Intrinsic"
+                  SourceOfDefaultValue="AfterContext" />
+    </StringProperty.DataSource>
+  </StringProperty>
+</Rule>

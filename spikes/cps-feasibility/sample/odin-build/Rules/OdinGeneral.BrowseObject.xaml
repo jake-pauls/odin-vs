@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Rule Name="OdinGeneralBrowseObject"
+      Description="Project Properties"
+      DisplayName="General"
+      PageTemplate="generic"
+      PropertyPagesHidden="true"
+      xmlns="http://schemas.microsoft.com/build/2009/properties">
+  <Rule.DataSource>
+    <DataSource HasConfigurationCondition="False"
+                Persistence="ProjectFile"
+                SourceOfDefaultValue="AfterContext" />
+  </Rule.DataSource>
+
+  <StringProperty Name="FileName"
+                  Description="Name of the project file."
+                  DisplayName="File Name"
+                  ReadOnly="True">
+    <StringProperty.DataSource>
+      <DataSource PersistedName="MSBuildProjectFile"
+                  Persistence="ProjectFile"
+                  SourceOfDefaultValue="AfterContext" />
+    </StringProperty.DataSource>
+  </StringProperty>
+
+  <StringProperty Name="FullPath"
+                  Description="Location of the project file."
+                  DisplayName="Project Folder"
+                  ReadOnly="True">
+    <StringProperty.DataSource>
+      <DataSource PersistedName="ProjectDir"
+                  Persistence="ProjectFile"
+                  SourceOfDefaultValue="AfterContext" />
+    </StringProperty.DataSource>
+  </StringProperty>
+</Rule>

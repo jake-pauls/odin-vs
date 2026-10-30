@@ -1,0 +1,21 @@
+<VSTemplate Version="3.0.0" Type="Project" xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
+  <TemplateData>
+    <Name>Odin Executable</Name>
+    <Description>An Odin console program with a src\main.odin entry point.</Description>
+    <ProjectType>Odin</ProjectType>
+    <SortOrder>1000</SortOrder>
+    <CreateNewFolder>true</CreateNewFolder>
+    <DefaultName>OdinApp</DefaultName>
+    <ProvideDefaultName>true</ProvideDefaultName>
+    <LocationField>Enabled</LocationField>
+    <EnableLocationBrowseButton>true</EnableLocationBrowseButton>
+    <CreateInPlace>true</CreateInPlace>
+  </TemplateData>
+  <TemplateContent>
+    <Project TargetFileName="$projectname$.odinproj" File="OdinApp.odinproj" ReplaceParameters="true">
+      <Folder Name="src" TargetFolderName="src">
+        <ProjectItem ReplaceParameters="true" TargetFileName="main.odin">main.odin</ProjectItem>
+      </Folder>
+    </Project>
+  </TemplateContent>
+</VSTemplate>

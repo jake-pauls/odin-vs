@@ -1,0 +1,69 @@
+<Project>
+  <!-- B1 spike: design-time wiring CPS needs for a custom project type.
+       The BrowseObject rule is what fixes "missing some critical imports": CPS throws that error when no
+       PropertyPageSchema with Context BrowseObject exists (see PhysicalProjectTreeProvider.GetProjectRootProperties). -->
+  <PropertyGroup>
+    <OdinRulesDir>$(MSBuildThisFileDirectory)Rules\</OdinRulesDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectCapability Include="OdinProject" />
+    <ProjectCapability Include="ProjectConfigurationsDeclaredAsItems" />
+    <!-- C# declares this so CPS tracks glob-included files and re-evaluates when files change on disk. -->
+    <ProjectCapability Include="UseFileGlobs" />
+    <!-- Same switch C# sets: our own [ExportDebugger] provider is used instead of VS's built-in Windows Local Debugger. -->
+    <ProjectCapability Include="DisableBuiltInDebuggerServices" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OdinExe Condition="'$(OdinExe)' == ''">C:\Program Files\Odin\odin\dist\odin.exe</OdinExe>
+    <OdinPackageDir Condition="'$(OdinPackageDir)' == ''">src</OdinPackageDir>
+    <OutDir>$(MSBuildProjectDirectory)\bin\$(Configuration)\</OutDir>
+    <TargetName>$(MSBuildProjectName)</TargetName>
+    <TargetPath>$(OutDir)$(TargetName).exe</TargetPath>
+    <!-- Read by VS's built-in "Windows Local Debugger" (applies to CPS projects with the BuildWindowsDesktopTarget capability). -->
+    <LocalDebuggerCommand>$(TargetPath)</LocalDebuggerCommand>
+    <LocalDebuggerWorkingDirectory>$(MSBuildProjectDirectory)</LocalDebuggerWorkingDirectory>
+    <LocalDebuggerDebuggerType>Auto</LocalDebuggerDebuggerType>
+    <!-- CPS selects the debug launch provider whose [ExportDebugger("<name>")] equals this property. -->
+    <DebuggerFlavor Condition="'$(DebuggerFlavor)' == ''">OdinDebugger</DebuggerFlavor>
+  </PropertyGroup>
+
+  <!-- B3/B5 spike build: real odin invocation. Real targets (-json-errors, collections) replace this in M3. -->
+  <Target Name="Build">
+    <Message Importance="high" Text="ODIN-STUB Build: Configuration=$(Configuration) Platform=$(Platform) Project=$(MSBuildProjectName)" />
+    <MakeDir Directories="$(OutDir)" />
+    <PropertyGroup>
+      <!-- -debug emits the PDB and implies -o:none, so Release builds must not get it. -->
+      <OdinDebugFlag Condition="'$(Configuration)' == 'Debug'">-debug</OdinDebugFlag>
+      <OdinDebugFlag Condition="'$(Configuration)' != 'Debug'"></OdinDebugFlag>
+    </PropertyGroup>
+    <Exec Command="&quot;$(OdinExe)&quot; build &quot;$(MSBuildProjectDirectory)\$(OdinPackageDir)&quot; $(OdinDebugFlag) -strict-style -out:&quot;$(TargetPath)&quot;" />
+  </Target>
+  <Target Name="Clean">
+    <Message Importance="high" Text="ODIN-STUB Clean: Configuration=$(Configuration) Platform=$(Platform)" />
+  </Target>
+  <Target Name="Rebuild" DependsOnTargets="Clean;Build" />
+
+  <ItemGroup>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinProjectItemsSchema.xaml">
+      <Context>Project</Context>
+    </PropertyPageSchema>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinGeneral.BrowseObject.xaml">
+      <Context>BrowseObject</Context>
+    </PropertyPageSchema>
+    <!-- Debug selection: VS's own DebuggerGeneralProperties rule (holds DebuggerFlavor) plus our debugger rule. -->
+    <PropertyPageSchema Include="$(MSBuildExtensionsPath)\Microsoft\VisualStudio\Managed\DebuggerGeneral.xaml">
+      <Context>Project</Context>
+    </PropertyPageSchema>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinDebugger.xaml">
+      <Context>Project</Context>
+    </PropertyPageSchema>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinCompile.xaml">
+      <Context>File</Context>
+    </PropertyPageSchema>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinCompile.BrowseObject.xaml">
+      <Context>BrowseObject</Context>
+    </PropertyPageSchema>
+  </ItemGroup>
+</Project>
