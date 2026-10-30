@@ -71,7 +71,7 @@ internal sealed class OdinDebugLaunchProvider : DebugLaunchProviderBase
             Project = VsHierarchy,
         };
 
-        IReadOnlyList<IDebugLaunchSettings> result = new List<IDebugLaunchSettings> { settings };
+        IReadOnlyList<IDebugLaunchSettings> result = [settings];
         return Task.FromResult(result);
     }
 }
