@@ -121,21 +121,26 @@ LSP servers normally own diagnostics and push them (`textDocument/publishDiagnos
 - Business logic lives in `OdinVS.Core` (no `Microsoft.VisualStudio.*` references) so it is unit-testable; VS-facing projects only adapt it.
 
 ### Process (from user-level rules)
-Ask before dependency add/upgrade, network access beyond registries, file deletion, or running anything not defined by project commands. Commits and merges follow "Git workflow" below. Push only to `git@github.com:jake-pauls/`.
+Ask before dependency add/upgrade, network access beyond registries, file deletion, or running anything not defined by project commands. Branches, commits and PRs follow "Git workflow" below. Push only to `git@github.com:jake-pauls/`.
 
 ### Git workflow
-Rules 1-6 are the user's; 7-11 were proposed by Claude and confirmed by the user.
-1. Work for each milestone lives on a **milestone branch** until the milestone is complete: `milestone/m<N>-<slug>`, e.g. `milestone/m0-spikes`. (A branch named `m0` could not coexist with task branches `m0/...`, hence the `milestone/` prefix.)
-2. Work on a milestone's tasks happens on **task branches prefixed with the milestone**, cut from the milestone branch: `m<N>/<task-slug>`, e.g. `m0/cps-load-check`.
-3. A task branch merges **up** into its milestone branch only when the task is complete.
-4. When a milestone is complete, its milestone branch merges into `main`.
-5. **Always ask for the user's code review before merging a branch up** (task into milestone, milestone into main). Merging **down** (milestone into a task branch, to keep it current) needs no approval.
-6. Commit as you work, at the end of each finished segment of a task; the user reviews the whole task branch before it merges up, like a pull request. Commits on task branches are pre-approved; commits directly on a milestone branch or `main` are not (except changes the user directs).
-7. Merge up with `--no-ff` so task history stays visible. Never force-push, reset, rebase published branches, or delete branches without asking.
-8. Before asking for review, say what changed, which checklist items it satisfies, and what was run (tests, builds); push the task branch for review only when the user agrees.
-9. Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. The repo-local identity is `jake-pauls <jakepauls99@gmail.com>`.
-10. Pushing: verify `git remote get-url origin` matches `git@github.com:jake-pauls/` first. Git Bash cannot see the Windows ssh-agent, so push from PowerShell with `$env:GIT_SSH_COMMAND = 'C:/Windows/System32/OpenSSH/ssh.exe'`.
-11. **Decided:** all spike code goes under `spikes/<name>/` on its task branch, never into `src/` or `tests/` (the scratchpad is session-local and unreviewable); promote real pieces (e.g. `OlsClient` into `OdinVS.Core.Tests`) in later tasks.
+Simplified 2026-10-30 (user): there are no milestone branches. Every task is its own branch off `main`, reviewed as its own PR, so branches never stack.
+```
+main
+| - m0/cps-feasibility
+| - m0/odin-breakpoints
+| - m1/<task-slug>
+```
+1. **One task, one branch,** named `m<N>/<task-slug>` (milestone number, then a short slug), always cut from an up-to-date `main`. Never cut a task branch from another task branch.
+2. **One PR per task branch into `main`.** The user reviews and merges it; I never merge into `main` myself.
+3. Commit as you work, at the end of each finished segment of a task. Commits on task branches are pre-approved; commits directly on `main` are not (except changes the user directs).
+4. Before a task branch is cut, `git fetch` and fast-forward `main` (from PowerShell, see rule 9). If a task depends on an unmerged task, wait for that PR to merge instead of stacking.
+5. Push a task branch and open its PR only when the user asks (or has said to, for that task). The PR description says what changed, which `docs/milestones.md` items it satisfies, and what was run (tests, builds).
+6. Never force-push, reset, rebase published branches, or delete branches without asking. If `main` moves, merge `main` into the task branch.
+7. Milestone checklist ticks are proposals until the user merges the PR; say so in the PR description.
+8. Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. The repo-local identity is `jake-pauls <jakepauls99@gmail.com>`.
+9. Pushing: verify `git remote get-url origin` matches `git@github.com:jake-pauls/` first. Git Bash cannot see the Windows ssh-agent, so push from PowerShell with `$env:GIT_SSH_COMMAND = 'C:/Windows/System32/OpenSSH/ssh.exe'`.
+10. **Decided:** all spike code goes under `spikes/<name>/` on its task branch, never into `src/` or `tests/` (the scratchpad is session-local and unreviewable); promote real pieces (e.g. `OlsClient` into `OdinVS.Core.Tests`) in later tasks.
 
 ## Architecture additions
 ```
