@@ -9,6 +9,8 @@
   <ItemGroup>
     <ProjectCapability Include="OdinProject" />
     <ProjectCapability Include="ProjectConfigurationsDeclaredAsItems" />
+    <!-- C# declares this so CPS tracks glob-included files and re-evaluates when files change on disk. -->
+    <ProjectCapability Include="UseFileGlobs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -16,6 +18,12 @@
       <Context>Project</Context>
     </PropertyPageSchema>
     <PropertyPageSchema Include="$(OdinRulesDir)OdinGeneral.BrowseObject.xaml">
+      <Context>BrowseObject</Context>
+    </PropertyPageSchema>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinCompile.xaml">
+      <Context>File</Context>
+    </PropertyPageSchema>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinCompile.BrowseObject.xaml">
       <Context>BrowseObject</Context>
     </PropertyPageSchema>
   </ItemGroup>
