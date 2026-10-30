@@ -23,4 +23,4 @@ Use an **MSBuild SDK**: `<Project Sdk="Odin.Sdk/<version>">`. Command-line build
 - The MSBuild task assembly (`OdinVS.Core`, M3) will ship inside the package under `Sdk/` or `tools/`; watch for the NuGet cache locking it with node reuse.
 - `odin.exe` location (separate open decision) is still hard-coded in `Sdk.targets`.
 - Not tested: `.slnx`, opening the project with no feed configured (expect an SDK-not-found load error; the message was not captured), version ranges.
-- Housekeeping: the Exp window opened for the check did not close when its X was clicked (likely a prompt behind it); close it manually.
+- Housekeeping: the Exp window ignored its X button but closed via File > Exit.
