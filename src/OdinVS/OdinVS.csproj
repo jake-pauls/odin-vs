@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <VSSDKBuildToolsAutoSetup>true</VSSDKBuildToolsAutoSetup>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GeneratePkgDefFile>false</GeneratePkgDefFile>
+    <IncludeAssemblyInVSIXContainer>false</IncludeAssemblyInVSIXContainer>
+    <IncludeDebugSymbolsInVSIXContainer>false</IncludeDebugSymbolsInVSIXContainer>
+    <IncludeCopyLocalReferencesInVSIXContainer>false</IncludeCopyLocalReferencesInVSIXContainer>
+    <CreateVsixContainer>true</CreateVsixContainer>
+    <DeployExtension>false</DeployExtension>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="18.9.820" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="source.extension.vsixmanifest" />
+    <Content Include="odin.pkgdef">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Grammars\odin.tmLanguage.json">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>Grammars\</VSIXSubPath>
+    </Content>
+    <Content Include="Grammars\language-configuration.json">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>Grammars\</VSIXSubPath>
+    </Content>
+    <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <None Include="Grammars\README.md" />
+  </ItemGroup>
+</Project>
