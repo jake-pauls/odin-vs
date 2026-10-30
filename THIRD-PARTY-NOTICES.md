@@ -4,7 +4,7 @@ odin-vs includes the following third-party material. It is also shipped inside t
 
 ## Odin TextMate grammar
 
-- File: `src/OdinVS/Grammars/odin.tmLanguage.json`. Modified by odin-vs: one line added (`"fileTypes": ["odin"],`) so Visual Studio associates the grammar with `.odin` files; see `src/OdinVS/Grammars/README.md`.
+- File: `src/OdinVS/Grammars/odin.tmLanguage.json`. Modified by odin-vs: one block added (`"fileTypes": ["odin"],` between `// ODIN-VS(START)` and `// ODIN-VS(END)` comment lines) so Visual Studio associates the grammar with `.odin` files; see `src/OdinVS/Grammars/README.md`.
 - Source: https://github.com/DanielGavin/ols, `editors/vscode/syntaxes/odin.tmLanguage.json` at commit `d26a19b38c581e28f67609cbb2d5ac933a9373d1` (2025-01-13).
 - The grammar's own header says "Modification of https://github.com/fivemoreminix/odin-vscode". That name now resolves to https://github.com/lukewilson2002/odin-vscode (checked with `gh api` on 2026-10-30; `fivemoreminix/odin-vscode` and `asmoaesl/odin-vscode` return the same repository, which is not a fork).
 - Both projects are MIT licensed. Their notices follow.

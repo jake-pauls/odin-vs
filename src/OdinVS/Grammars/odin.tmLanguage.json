@@ -2,7 +2,9 @@
 	"comment": "Modification of https://github.com/fivemoreminix/odin-vscode",
 	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
 	"name": "Odin",
+	// ODIN-VS(START)
 	"fileTypes": ["odin"],
+	// ODIN-VS(END)
 	"patterns": [
 		{ "include": "#file-tags" },
 		{ "include": "#package-name-declaration" },
