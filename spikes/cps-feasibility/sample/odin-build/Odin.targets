@@ -11,11 +11,29 @@
     <ProjectCapability Include="ProjectConfigurationsDeclaredAsItems" />
     <!-- C# declares this so CPS tracks glob-included files and re-evaluates when files change on disk. -->
     <ProjectCapability Include="UseFileGlobs" />
+    <!-- Same switch C# sets: our own [ExportDebugger] provider is used instead of VS's built-in Windows Local Debugger. -->
+    <ProjectCapability Include="DisableBuiltInDebuggerServices" />
   </ItemGroup>
 
-  <!-- B3 stub: proves the solution configuration reaches the project. Real targets replace these in M3. -->
+  <PropertyGroup>
+    <OdinExe Condition="'$(OdinExe)' == ''">C:\Program Files\Odin\odin\dist\odin.exe</OdinExe>
+    <OdinPackageDir Condition="'$(OdinPackageDir)' == ''">src</OdinPackageDir>
+    <OutDir>$(MSBuildProjectDirectory)\bin\$(Configuration)\</OutDir>
+    <TargetName>$(MSBuildProjectName)</TargetName>
+    <TargetPath>$(OutDir)$(TargetName).exe</TargetPath>
+    <!-- Read by VS's built-in "Windows Local Debugger" (applies to CPS projects with the BuildWindowsDesktopTarget capability). -->
+    <LocalDebuggerCommand>$(TargetPath)</LocalDebuggerCommand>
+    <LocalDebuggerWorkingDirectory>$(MSBuildProjectDirectory)</LocalDebuggerWorkingDirectory>
+    <LocalDebuggerDebuggerType>Auto</LocalDebuggerDebuggerType>
+    <!-- CPS selects the debug launch provider whose [ExportDebugger("<name>")] equals this property. -->
+    <DebuggerFlavor Condition="'$(DebuggerFlavor)' == ''">OdinDebugger</DebuggerFlavor>
+  </PropertyGroup>
+
+  <!-- B3/B5 spike build: real odin invocation. Real targets (-json-errors, collections) replace this in M3. -->
   <Target Name="Build">
     <Message Importance="high" Text="ODIN-STUB Build: Configuration=$(Configuration) Platform=$(Platform) Project=$(MSBuildProjectName)" />
+    <MakeDir Directories="$(OutDir)" />
+    <Exec Command="&quot;$(OdinExe)&quot; build &quot;$(MSBuildProjectDirectory)\$(OdinPackageDir)&quot; -debug -out:&quot;$(TargetPath)&quot;" />
   </Target>
   <Target Name="Clean">
     <Message Importance="high" Text="ODIN-STUB Clean: Configuration=$(Configuration) Platform=$(Platform)" />
@@ -28,6 +46,13 @@
     </PropertyPageSchema>
     <PropertyPageSchema Include="$(OdinRulesDir)OdinGeneral.BrowseObject.xaml">
       <Context>BrowseObject</Context>
+    </PropertyPageSchema>
+    <!-- Debug selection: VS's own DebuggerGeneralProperties rule (holds DebuggerFlavor) plus our debugger rule. -->
+    <PropertyPageSchema Include="$(MSBuildExtensionsPath)\Microsoft\VisualStudio\Managed\DebuggerGeneral.xaml">
+      <Context>Project</Context>
+    </PropertyPageSchema>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinDebugger.xaml">
+      <Context>Project</Context>
     </PropertyPageSchema>
     <PropertyPageSchema Include="$(OdinRulesDir)OdinCompile.xaml">
       <Context>File</Context>
