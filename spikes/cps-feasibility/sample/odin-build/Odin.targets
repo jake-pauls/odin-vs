@@ -33,7 +33,12 @@
   <Target Name="Build">
     <Message Importance="high" Text="ODIN-STUB Build: Configuration=$(Configuration) Platform=$(Platform) Project=$(MSBuildProjectName)" />
     <MakeDir Directories="$(OutDir)" />
-    <Exec Command="&quot;$(OdinExe)&quot; build &quot;$(MSBuildProjectDirectory)\$(OdinPackageDir)&quot; -debug -out:&quot;$(TargetPath)&quot;" />
+    <PropertyGroup>
+      <!-- -debug emits the PDB and implies -o:none, so Release builds must not get it. -->
+      <OdinDebugFlag Condition="'$(Configuration)' == 'Debug'">-debug</OdinDebugFlag>
+      <OdinDebugFlag Condition="'$(Configuration)' != 'Debug'"></OdinDebugFlag>
+    </PropertyGroup>
+    <Exec Command="&quot;$(OdinExe)&quot; build &quot;$(MSBuildProjectDirectory)\$(OdinPackageDir)&quot; $(OdinDebugFlag) -strict-style -out:&quot;$(TargetPath)&quot;" />
   </Target>
   <Target Name="Clean">
     <Message Importance="high" Text="ODIN-STUB Clean: Configuration=$(Configuration) Platform=$(Platform)" />

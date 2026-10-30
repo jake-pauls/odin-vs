@@ -4,10 +4,10 @@
     <Description>An empty Odin source file.</Description>
     <ProjectType>Odin</ProjectType>
     <SortOrder>10</SortOrder>
-    <DefaultName>File.odin</DefaultName>
+    <DefaultName>file.odin</DefaultName>
     <ProvideDefaultName>true</ProvideDefaultName>
   </TemplateData>
   <TemplateContent>
-    <ProjectItem ReplaceParameters="true" TargetFileName="$fileinputname$.odin">File.odin</ProjectItem>
+    <ProjectItem ReplaceParameters="true" TargetFileName="$fileinputname$.odin">file.odin</ProjectItem>
   </TemplateContent>
 </VSTemplate>
