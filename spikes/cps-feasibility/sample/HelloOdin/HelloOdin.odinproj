@@ -6,10 +6,6 @@
     <Platform Condition="'$(Platform)' == ''">x64</Platform>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectCapability Include="OdinProject" />
-    <ProjectCapability Include="ProjectConfigurationsDeclaredAsItems" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
       <Platform>x64</Platform>
@@ -22,4 +18,5 @@
   <ItemGroup>
     <OdinCompile Include="src\**\*.odin" />
   </ItemGroup>
+  <Import Project="..\odin-build\Odin.targets" />
 </Project>

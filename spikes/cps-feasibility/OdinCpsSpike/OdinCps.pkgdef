@@ -5,7 +5,9 @@
 @="ProjectFactory"
 "DisplayName"="Odin Project (spike)"
 "DisplayProjectFileExtensions"="Odin Project Files (*.odinproj);*.odinproj"
+"ProjectFactoryPackage"="{3347BEE8-D7A1-4082-95E4-38A439553CC2}"
 "Package"="{3347BEE8-D7A1-4082-95E4-38A439553CC2}"
+"Language(VsTemplate)"="Odin"
 "DefaultProjectExtension"="odinproj"
 "PossibleProjectExtensions"="odinproj"
 "DisableAsynchronousSolutionLoad"=dword:00000000

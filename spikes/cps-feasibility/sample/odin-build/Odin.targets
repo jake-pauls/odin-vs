@@ -1,0 +1,22 @@
+<Project>
+  <!-- B1 spike: design-time wiring CPS needs for a custom project type.
+       The BrowseObject rule is what fixes "missing some critical imports": CPS throws that error when no
+       PropertyPageSchema with Context BrowseObject exists (see PhysicalProjectTreeProvider.GetProjectRootProperties). -->
+  <PropertyGroup>
+    <OdinRulesDir>$(MSBuildThisFileDirectory)Rules\</OdinRulesDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectCapability Include="OdinProject" />
+    <ProjectCapability Include="ProjectConfigurationsDeclaredAsItems" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinProjectItemsSchema.xaml">
+      <Context>Project</Context>
+    </PropertyPageSchema>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinGeneral.BrowseObject.xaml">
+      <Context>BrowseObject</Context>
+    </PropertyPageSchema>
+  </ItemGroup>
+</Project>

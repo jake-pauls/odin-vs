@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSchemaDefinitions xmlns="http://schemas.microsoft.com/build/2009/properties">
+  <ContentType Name="OdinSourceFile"
+               DisplayName="Odin source file"
+               ItemType="OdinCompile" />
+
+  <ItemType Name="OdinCompile"
+            DisplayName="Odin source file" />
+
+  <FileExtension Name=".odin"
+                 ContentType="OdinSourceFile" />
+</ProjectSchemaDefinitions>
