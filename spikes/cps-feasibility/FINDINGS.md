@@ -103,3 +103,9 @@ What it took (all found by decompiling CPS, `ilspycmd`):
 
 ### C. Decision: CPS, go (2026-10-30)
 No Phase A check or Phase B item was impossible. Six capabilities (load, file tree, configurations incl. mixed C#/C++ solutions, Add Item, Add Project, F5) work. The go is conditional on the untested hard requirements: Add Reference with cycle rejection (M6), Add Existing Project, and Ctrl+F5 through a build. Details, effort table and what remains unproven are in CLAUDE.md under "Project system decision".
+
+## Why `DisableAsynchronousProjectTreeLoad=1` (2026-10-30, reading only)
+- Copied from VS's own `msbuildproj.pkgdef`; the C#, VB and F# project types also register `DisableAsynchronousProjectTreeLoad = true` (`ProjectTypeRegistration` in `Microsoft.VisualStudio.ProjectSystem.Managed.VS`). The attribute only writes the registry value (`ProjectTypeRegistrationAttribute`).
+- No managed code in the CPS assemblies reads the value, so the consumer is the VS shell's solution loader. Its exact effect is **not verified**; by its name it builds the project tree synchronously during project load instead of in the background.
+- `DisableAsynchronousSolutionLoad=0` (async solution load on) is a separate switch.
+- Kept as is. **Next session:** set it to 0 once and see whether the tree, F5 or Add Item behave differently; relevant to the 100+ project requirement (M6), since a synchronous tree load could slow solution open.
