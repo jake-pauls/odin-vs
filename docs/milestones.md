@@ -1,0 +1,68 @@
+Referenced from `CLAUDE.md`. Each item must be demonstrably true; "done" means checked off with a note of how it was verified. Record time and token cost when a milestone closes.
+
+# Milestone checklists
+Each item must be demonstrably true; "done" means checked off with a note of how it was verified.
+
+### M0 Spikes (new; before any production code)
+**M0 cost (measured from this session's transcript on 2026-10-29, local time):** about 47 h calendar from the first message (2026-10-28 00:18) to the PR (2026-10-29 23:12), of which about 3 h 07 min active (sum of gaps between transcript entries shorter than 10 min; long waits for builds, VS launches and the user count as idle). Tokens, main session only: 273 assistant turns, about 294k output tokens, 608 uncached input tokens, 1.28M cache-creation tokens, 94.5M cache-read tokens (cache reads are the context being re-read every turn, not new work). Not included: subagent runs (the Haiku review used about 125k). Output counts may be low because streamed turns are logged in pieces. Record the same figures for every later milestone when it closes (commit timestamps alone are unreliable for time).
+- [x] Odin and ols installed under `C:\Program Files\Odin\`; version/help/root recorded in "Verified toolchain facts". `-json-errors` and `-export-dependencies:json` captured (see facts). Remaining: read the rest of `odin build -help`, `odin check -help`, observe a warning in JSON, and save trimmed real outputs as test fixtures under `tests/OdinVS.Core.Tests/Fixtures/`.
+- [x] Tier-2 protocol check passes with a throwaway C# client (scratchpad `OlsClient`, to be moved into the Core test project): initialize, hover, completion and diagnostics all work against ols once configured. Details in "ols behavior" below. **PowerShell attempts failed (kept for the record):** a throwaway PowerShell client (scratchpad `ols-smoke.ps1`, not in the repo) got `Starting Odin Language Server dev-2026-10` then `Failed to read and parse header` right after `initialize`, and the script then hung (a stray ols/shell process may remain). Second attempt gave the same result (and left a hung process again). The BOM theory is now unlikely: the script writes through `StandardInput.BaseStream`, which bypasses the writer's encoding, and `ProcessStartInfo.StandardInputEncoding` does not exist in Windows PowerShell 5.1. Remaining hypotheses: (2) ols wants a different header form or reads in a way PowerShell's pipe handling breaks; (3) the unread stderr pipe blocks. **Stop iterating in PowerShell.** Build the client as a throwaway C# console app (no NuGet packages needed) to settle it, then move it into the Core test project.
+- [x] Throwaway VSSDK VSIX builds with VS MSBuild and loads in Exp (done; see the loaded/MEF items below). Packages restored (nuget.org, user-approved) into the scratchpad spike `VsixSpike`: `Microsoft.VisualStudio.SDK` 17.14.40265, `Microsoft.VisualStudio.LanguageServer.Client` 17.14.60, `Microsoft.VSSDK.BuildTools` 18.9.820 (125 packages total, net472). The SDK/Client packages are the 17.14 line while VS is 18.11; confirm they load in VS 18 during this spike. **Build half done (scratchpad `VsixSpike` + `OdinSpike.Lsp`):** an SDK-style `net472` host project plus an `ILanguageClient`/content-type class library builds with VS MSBuild (`/restore /t:Rebuild`) into `VsixSpike.vsix`, which contains `OdinSpike.Lsp.dll` and a generated manifest with the MEF asset path resolved, so referenced-assembly packaging works. Needed settings: `VSSDKBuildToolsAutoSetup=true` on the host (otherwise no `.vsix` is produced, silently) and `CopyLocalLockFileAssemblies=false` on both projects (otherwise ~120 VS SDK DLLs are copied to the output). Still to do: install into the Exp hive, open a `.odin` file, confirm MEF discovery and `ActivateAsync` via `%TEMP%\odinspike.log`, and check the Exp `ComponentModelCache` error log.
+- [x] VSIX spike installed and loaded in VS Exp (18.11) with the 17.14-line SDK/Client packages: no `ComponentModelCache` `.err` file. **Caveat:** I passed `/admin` to `VSIXInstaller` (not needed, my mistake), which installed the spike per-machine under `...\IDE\Extensions\hcvrc1z3.w0e\`, so it is also active in the main VS instance; uninstall it via Manage Extensions. Use `/rootSuffix:Exp` without `/admin` next time.
+- [x] MEF discovery of `ILanguageClient` + content type from a referenced assembly: **works**. Opening `main.odin` in Exp logged `OnLoadedAsync`, `ActivateAsync`, `ols started`, `OnServerInitializedAsync` in `%TEMP%\odinspike.log`, so VS's client launched ols and completed `initialize`. Not yet checked: whether VS sends `didSave`, hover/completion, and diagnostics (needs `ols.json` with `odin_command`/`checker_path`); three `ols` processes were seen running afterwards (one is the spike's pid 19448, the others unexplained, possibly earlier test leftovers), so check ols is stopped on VS exit in M2.
+- [x] CPS spike (see Project system), done in two phases so impossibilities surface cheaply. **Timebox:** no fixed cap; the user will run this in short stretches (a few hours at first) and may say stop at any time. **When told to stop, stop immediately and report progress so far** (which items are done, evidence, what is in flight, and the next step). Independently, stop and reassess as soon as any Phase A check returns "impossible". Record elapsed effort and the outcome of each item so the CPS-vs-MPFProj decision rests on measured effort.
+  - **Phase A: feasibility checks (reading and tiny probes; no project system built yet).** Each ends "feasible", "feasible with caveat: ...", or "impossible: ..." plus the evidence. Reading online docs needs network approval.
+    - [x] A0 (feasible with caveat: passed on the VS-installed CPS assemblies, because public NuGet packages stop at 17.9.380; spikes/cps-feasibility/FINDINGS.md) Authoring surface: CPS authoring packages exist for VS 18 (ask before any NuGet search), the `VSProjectSystem` docs still match, and at least one reference implementation of a custom CPS project type can be found to copy from. *Impossible if:* no public packages/APIs for VS 18, or the docs describe only internals.
+    - [x] A1 (feasible; VS ships a pkgdef-registered CPS type to copy) Load: how a custom project type is registered (project type GUID, factory/capabilities, `.pkgdef`) and that a bare `.odinproj` can be opened as a CPS project from a `.sln`/`.slnx`. *Impossible if:* new project types cannot be defined (only flavored).
+    - [x] A2 (feasible with caveat; globbing untested) File tree: custom item types (`OdinCompile`) and the project tree provider can show `.odin` files from MSBuild items under the project node. *Impossible if:* custom item types cannot appear in the tree.
+    - [x] A3 (likely feasible, unproven; B3 is decisive) Configurations: the project participates in the **solution configuration** (Debug/Release x64) so the Configuration Manager and the top-bar configuration dropdown switch the Odin project together with C# and C++ projects in the same solution. A fixed set of configurations (Debug, Release) is acceptable; user-defined ones are a bonus. *Impossible if:* an Odin project cannot be mapped into the solution configuration, so the Configuration Manager or the toolbar dropdown cannot switch it together with the other projects.
+    - [x] A4 (feasible; templates ship as VSIX assets + `Language(VsTemplate)`; Add Existing Project not tested) Add Item and Add Project: item templates (`.vstemplate`) work for a custom project type through the standard Add > New Item dialog, and project templates appear in the standard New Project / Add > New Project dialog (Add Existing Project needs only the registered project type). *Impossible if:* Add Item or project templates cannot be supplied for a custom type.
+    - [x] A5 (feasible with caveat; exe/args/Ctrl+F5 untested) F5 stub: a debug launch provider can run an `.exe` (`$(TargetPath)`) under the native debug engine with working directory and arguments. *Impossible if:* custom types cannot supply a launch provider.
+  - **Phase B: walking skeleton (only for sub-goals A said are feasible).** Pass criteria are what a person sees in VS Exp.
+    - [x] B1 Load (passed 2026-10-30): `spikes/cps-feasibility/sample/HelloOdin/HelloOdin.odinproj` opens in `CpsSpike.sln` in VS Exp 18.11 under our own project type GUID, and the toolbar shows Debug and x64 dropdowns. Needed: `ProjectFactoryPackage` in the pkgdef plus a BrowseObject rule schema (see FINDINGS.md).
+    - [x] B2 File tree (passed 2026-10-30): HelloOdin > src > main.odin, util.odin appear, and a file added on disk while VS was open (live.odin) appeared within ~10 s. Needed: item rules (`OdinCompile.xaml` File context + `OdinCompile.BrowseObject.xaml`) and the `UseFileGlobs` capability.
+    - [x] B3 Configurations (passed 2026-10-30; evidence in FINDINGS.md): in a solution containing the Odin project plus a C# and a C++ project, Debug and Release x64 appear in the Configuration Manager and the top-bar dropdown; switching either one switches all three projects, and the Odin project's stub target echoes the matching MSBuild property. *Not observed:* Build inside VS with Release selected (Release was seen only from command-line `msbuild`).
+    - [x] B4 Add Item (passed 2026-10-30; see FINDINGS.md): Add > New Item opens VS's standard dialog, an "Odin File" template is listed, and choosing it creates an `.odin` file that appears in the tree via the project's glob (the `.odinproj` itself is unchanged by design).
+    - [x] B4-2 Add Project (passed 2026-10-30; see FINDINGS.md): Add > New Project (the standard creation window) lists an "Odin Executable" template (File > New > Project was not separately observed). The window accepts a project name and location and generates a folder containing `<Name>.odinproj` and `src/main.odin` that opens and is added to the solution. *Not observed:* a build or F5 of the generated `OdinApp1`; `sample/OdinApp1/` is committed as evidence of the generation. **Next session:** run both unobserved checks (Build with Release selected in Exp; build/F5 `OdinApp1`) and tick them off here. *Stretch, later:* more templates (dynamic library, static library).
+    - [x] B5 F5 stub (passed 2026-10-30): F5 (toolbar Start) launched the exe built by the project's Build target under the native debugger; Output > Debug showed HelloOdin.exe loading and exiting with code 0. Needed: `DebuggerFlavor`, VS's `DebuggerGeneral.xaml`, our `OdinDebugger.xaml`, and a small `[ExportDebugger("OdinDebugger")]` provider (see FINDINGS.md). Breakpoint binding is still the separate M0 item below.
+  - [x] C Decision recorded (2026-10-30, see "Project system decision" below): CPS go / no-go (and which sub-goals, if any, need MPFProj) with a short rationale and effort table, added to "Project system".
+- [ ] A hand-built exe + PDB from `odin build -debug` hits a breakpoint in an `.odin` file when opened via Debug > Attach/Open as project (gate for M5).
+- [ ] `OdinTargetsPath` strategy chosen (finding 6).
+- [x] Project system decision made: **CPS** (see "Project system decision" below).
+
+### M1 Colorization
+- [ ] Grammar chosen, license noted, checked in under `Grammars/`.
+- [ ] `odin.pkgdef` registers it; fixture `.odin` shows keywords, strings, numbers, comments, procs, directives, attributes in Exp.
+- [ ] Bracket matching/comment toggling work if `language-configuration.json` is supplied.
+
+### M2 Language server
+- [ ] ols launches from the VSIX, stdio piped, stopped cleanly on VS exit.
+- [ ] Broken fixtures produce squiggles and Error List entries; fixing them clears both.
+- [ ] Completion, go-to-definition, hover checked and results recorded (including which do not work).
+- [ ] Missing `odin`/`ols` and ols crash paths log and set `Enabled = false` without hanging VS.
+- [ ] Version-compat warning verified with a deliberately mismatched ols.
+
+### M3 Command-line build
+- [ ] `Odin.props/targets` build `tests/samples/HelloOdin` (promoted from `spikes/cps-feasibility/sample/`) from a Developer shell.
+- [ ] Tier-3 tests cover: Debug PDB, Release, Clean, Rebuild, incremental skip, error mapping, missing odin.
+- [ ] Compile errors surface as canonical MSBuild errors (checked by tier-3 test).
+
+### M4 Project in solution (blocked on project-system decision)
+- [ ] `.odinproj` opens in a `.sln`/`.slnx` without errors; files appear in Solution Explorer.
+- [ ] Build/Clean/Rebuild from the menu; errors reach the Error List; double-click navigates.
+- [ ] Configuration Manager shows Debug/Release x64 and switching changes output.
+- [ ] Template creates a working project via File > New.
+
+### M5 Debugging
+- [ ] F5 launches `$(TargetPath)` with project working dir and args.
+- [ ] Breakpoints in `.odin` bind and hit; Locals/Watch usable for ints, strings, slices (note gaps).
+- [ ] Ctrl+F5 runs without debugger.
+
+### M6 Multi-project
+- [ ] Source and Link references implemented per Reference design; tier-1 tests for closure, duplicates, cycles.
+- [ ] Add Reference dialog creates working references; circular reference is rejected with the cycle path.
+- [ ] Odin + C++ (`.vcxproj`) + C# mixed sample builds and F5 runs.
+- [ ] Library source change rebuilds dependents; unchanged graph skips.
+- [ ] ols receives collections generated from references.
+- [ ] Generated 100-project solution loads and builds; load time and build time recorded.
+
