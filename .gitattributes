@@ -1,0 +1,2 @@
+# Vendored upstream grammar: keep bytes identical to the pinned commit (core.autocrlf would otherwise rewrite line endings).
+src/OdinVS/Grammars/odin.tmLanguage.json -text

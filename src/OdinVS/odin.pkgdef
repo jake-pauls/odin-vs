@@ -1,0 +1,5 @@
+[$RootKey$\TextMate\Repositories]
+"Odin"="$PackageFolder$\Grammars"
+
+[$RootKey$\TextMate\LanguageConfiguration\GrammarMapping]
+"source.odin"="$PackageFolder$\Grammars\language-configuration.json"

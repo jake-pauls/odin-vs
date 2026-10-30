@@ -31,9 +31,23 @@ Each item must be demonstrably true; "done" means checked off with a note of how
 - [x] Project system decision made: **CPS** (see "Project system decision" below).
 
 ### M1 Colorization
-- [ ] Grammar chosen, license noted, checked in under `Grammars/`.
-- [ ] `odin.pkgdef` registers it; fixture `.odin` shows keywords, strings, numbers, comments, procs, directives, attributes in Exp.
-- [ ] Bracket matching/comment toggling work if `language-configuration.json` is supplied.
+Decided 2026-10-30 (user): use the ols grammar verbatim, pinned to a commit so updates and divergence are traceable. Default Light and Dark themes are the only themes checked. Host project layout follows the brief: `src/OdinVS/` (`odin.pkgdef`, `Grammars/`).
+
+**Grammar and license**
+- [ ] Grammar chosen: `editors/vscode/syntaxes/odin.tmLanguage.json` from `DanielGavin/ols` at `d26a19b38c581e28f67609cbb2d5ac933a9373d1` (2025-01-13), checked in unmodified under `src/OdinVS/Grammars/`, with a `Grammars/README.md` giving source URL, SHA and update procedure (re-fetch at a new SHA, diff, re-run the fixture check).
+- [ ] License chain verified and recorded in `THIRD-PARTY-NOTICES.md` (repo root, also included in the VSIX): ols (MIT, Daniel Gavin 2021) <- odin-vscode (MIT, Luke Wilson 2018; `fivemoreminix`/`asmoaesl`/`lukewilson2002` resolve to one non-fork repo via `gh api`). Known residue: the repo's first version predates its MIT relicense (Unlicense before 2018-06-12) and one 2018 commit says "Bring up to date with official" without naming a source; contributors Tetralux and khvorov45 are credited by name only.
+- [ ] Grammar file is byte-identical to the pinned upstream file (checked by hash).
+
+**Registration and colorization**
+- [ ] `odin.pkgdef` registers the grammar (`TextMate\Repositories`) and the language configuration (`TextMate\LanguageConfiguration\GrammarMapping`, key `source.odin`); both are Content + Include in VSIX in the built `.vsix`.
+- [ ] Fixture `tests/samples/` `.odin` file covers keywords, strings (incl. backtick raw), numbers, comments (incl. nested block), procs, directives, attributes, `or_else`/`or_return`/`context`/`matrix`/`bit_set`/`bit_field`; shown in Exp under default **Light** and **Dark**, and the colors change between themes (screenshot notes recorded here). Record any token the grammar leaves uncolored.
+
+**`language-configuration.json`** (ours, C/C#-style, not copied from ols)
+- [ ] Supplies `comments` (`//`, `/* */`), `brackets`, `autoClosingPairs` (incl. backtick), `surroundingPairs` and `wordPattern`; indentation rules deliberately not supplied.
+- [ ] Toggle Line Comment and Toggle Block Comment work in `.odin` through the user's own VS keybindings (default Ctrl+K,Ctrl+C), not a keybinding we define.
+- [ ] Bracket matching, auto-close and surround work; double-click/Ctrl+arrow word boundaries follow `wordPattern`.
+- [ ] Folding probe (result recorded either way): the VS docs list no folding property, so test whether VS honors `#region`/`#endregion` and whether "Collapse to Definitions" collapses procedures for a TextMate-only language. If not, record it and carry proc-level outlining to M2 (candidate: LSP `foldingRange` from ols, unchecked).
+- [ ] Indentation (`indentationRules`/`onEnterRules`) deferred; revisit after the above is tested.
 
 ### M2 Language server
 - [ ] ols launches from the VSIX, stdio piped, stopped cleanly on VS exit.
