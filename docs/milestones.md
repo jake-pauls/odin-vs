@@ -27,7 +27,7 @@ Each item must be demonstrably true; "done" means checked off with a note of how
     - [x] B5 F5 stub (passed 2026-10-30): F5 (toolbar Start) launched the exe built by the project's Build target under the native debugger; Output > Debug showed HelloOdin.exe loading and exiting with code 0. Needed: `DebuggerFlavor`, VS's `DebuggerGeneral.xaml`, our `OdinDebugger.xaml`, and a small `[ExportDebugger("OdinDebugger")]` provider (see FINDINGS.md). Breakpoint binding is still the separate M0 item below.
   - [x] C Decision recorded (2026-10-30, see "Project system decision" below): CPS go / no-go (and which sub-goals, if any, need MPFProj) with a short rationale and effort table, added to "Project system".
 - [x] A hand-built exe + PDB from `odin build -debug` hits a breakpoint in an `.odin` file when opened via Open as project (gate for M5). Passed 2026-10-29: stopped on line 6 of `main.odin`, call stack and `a`,`b` locals correct; evidence in `spikes/odin-breakpoints/FINDINGS.md`.
-- [ ] `OdinTargetsPath` strategy chosen (finding 6).
+- [x] `OdinTargetsPath` strategy chosen (finding 6): MSBuild SDK `Odin.Sdk` distributed as a NuGet package (decided with the user 2026-10-29; CLI-only builds required). Verified with `dotnet msbuild`, VS MSBuild and VS Exp load+rebuild; see `spikes/odin-targets-path/FINDINGS.md`.
 - [x] Project system decision made: **CPS** (see "Project system decision" below).
 
 ### M1 Colorization
