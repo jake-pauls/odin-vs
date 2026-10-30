@@ -24,3 +24,10 @@ Use an **MSBuild SDK**: `<Project Sdk="Odin.Sdk/<version>">`. Command-line build
 - `odin.exe` location (separate open decision) is still hard-coded in `Sdk.targets`.
 - Not tested: `.slnx`, opening the project with no feed configured (expect an SDK-not-found load error; the message was not captured), version ranges.
 - Housekeeping: the Exp window ignored its X button but closed via File > Exit.
+
+## Approval and local-only safeguards (2026-10-29)
+The user confirmed the problem framing and the SDK approach. The package stays local until the user says otherwise:
+- `nuget.config` has `<clear/>` plus the single `feed` folder source, so restore never contacts nuget.org.
+- `nuget.config` sets `defaultPushSource` to `feed`; a bare `dotnet nuget push` (run from this folder) was observed to target the local folder, not nuget.org. This is a guard rail, not a lock: `dotnet nuget push -s <url>` still works if someone passes a source and an API key, and none is configured on this machine (not verified beyond this repo).
+- `feed/` is git-ignored, so the `.nupkg` is not committed.
+- Never run `dotnet nuget push` with an explicit source for `Odin.Sdk` without the user's go-ahead (also covered by the user-level "ask before network requests" rule).
