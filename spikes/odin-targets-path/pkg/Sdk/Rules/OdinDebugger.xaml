@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debugger "page" selected through the DebuggerFlavor property; its Name must equal [ExportDebugger("OdinDebugger")]. -->
+<Rule Name="OdinDebugger"
+      DisplayName="Start"
+      PageTemplate="Debugger"
+      Description="Odin debugging options"
+      xmlns="http://schemas.microsoft.com/build/2009/properties">
+  <Rule.DataSource>
+    <DataSource Persistence="ProjectFile"
+                HasConfigurationCondition="False"
+                SourceOfDefaultValue="AfterContext" />
+  </Rule.DataSource>
+
+  <StringProperty Name="OdinDebuggerPlaceholder"
+                  Visible="False" />
+</Rule>
