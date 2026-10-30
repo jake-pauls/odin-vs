@@ -7,7 +7,7 @@ Everything below amends or extends the brief. Where they conflict, this file win
   - `odin\dist\odin.exe` (release zip name says `dev-2026-10`; run `odin version` in M0 to confirm)
   - `ols\ols-x86_64-pc-windows-msvc.exe` (+ `odinfmt-x86_64-pc-windows-msvc.exe`, `ols\builtin\*.odin`). Bundle copy is renamed `ols.exe`.
 - **Hard requirements (user, confirmed):** `.sln`/`.odinproj`, mixed in one solution with C#/C++ projects; Configuration Manager (Debug/Release/...); Solution Explorer `Add Project`, `Add Existing Project`, `Add Item`, `Add Reference`; `.odinproj` XML is the source of truth (no property pages); all builds are native `odin` commands; cycle detection for references; designed for 10-20 projects typically, **100+ without pain**. Open Folder is rejected.
-- **Project system: CPS-first spike, MPFProj as fallback** (see Project system). Blocks M4+.
+- **Project system: CPS (decided 2026-10-30 after the M0 spike; see "Project system decision").** MPFProj is not planned.
 
 ## Findings on the brief
 
@@ -58,6 +58,24 @@ Conclusion: the 100-project and Configuration Manager requirements favor CPS; MP
 - `microsoft/VSProjectSystem` docs (`doc/Index.md`) map onto our needs; read in this order during the spike: `overview/define_a_new_project_type.md`, `overview/reference_implementations.md`, `overview/about_project_capabilities.md`, `overview/project_configurations.md`, `overview/threading_rules.md`, `extensibility/project_item_templates.md`, `extensibility/custom_reference_types.md`, `extensibility/reference_manager.md`, `extensibility/IValidProjectReferenceChecker.md` (hook for rejecting cyclic or invalid references), `extensibility/IDebugLaunchProvider.md`, `extensibility/IBuildUpToDateCheckProvider.md` (fast up-to-date check at 100 projects), `overview/enable_logging.md`.
 - The repo advises prototyping with CPS and falling back to MPFProj for scenarios CPS doesn't support yet; confirm with a spike that these docs still match VS 2026 (the repo has breaking-change pages only up to VS 2019).
 
+### Project system decision (2026-10-30): CPS, go
+All five spike capabilities (load, file tree, configurations, Add Item, F5) plus Add Project work with CPS in VS Exp 18.11; details and evidence are in `spikes/cps-feasibility/FINDINGS.md`. MPFProj is no longer planned.
+
+| Capability | Result | Rough effort (wall clock, incl. reading/decompiling) |
+|---|---|---|
+| A0-A5 feasibility reading | no blockers | ~1.5 h |
+| B1 Load | pass; needed `ProjectFactoryPackage` in the pkgdef + a BrowseObject rule | ~3 h (two dead ends) |
+| B2 File tree | pass; needed item rules + `UseFileGlobs` | ~0.7 h |
+| B3 Configurations | pass; Config Manager + toolbar switch Odin, C# and C++ together | ~0.7 h |
+| B5 F5 | pass; needed `DebuggerFlavor` + rules + a small `[ExportDebugger]` provider (C#) | ~2 h |
+| B4 / B4-2 templates | pass; item and project templates through VSIX assets + `Language(VsTemplate)` | ~1 h |
+
+What this means for the plan:
+- **Decompiling is the documentation.** `ilspycmd` on `Microsoft.VisualStudio.ProjectSystem*.dll` (in `Common7\IDE\CommonExtensions\Microsoft\Project\`) and reading VS's own `MSBuild\Microsoft\VisualStudio\Managed\*.xaml|targets` answered what the VS 2015-era docs could not. Budget for it in M4.
+- **Build setup:** compile the project-system code against the VS-installed assemblies (`HintPath`, `Private=false`); public CPS NuGet packages stop at 17.9.380. Expect to re-check compile references when VS updates.
+- **Still unproven (carry into M4-M6):** Add Reference / Reference Manager and the `IValidProjectReferenceChecker` cycle hook; Build-before-F5 ordering and reading `TargetPath` instead of the spike's hard-coded `bin\<cfg>\<name>.exe`; the real `Odin.targets` and `$(OdinTargetsPath)` (the spike's template hard-codes an absolute path); `.slnx`; user-defined solution configurations beyond Debug/Release; whether breakpoints bind in `.odin` (separate M0 gate); more project templates (dynamic/static library); behavior at 100+ projects.
+- **Spike-to-product mapping:** `OdinCps.pkgdef` becomes a `ProjectTypeRegistration`-style registration; `odin-build/Odin.targets` + `Rules/*.xaml` become `OdinVS.Build`; `OdinDebugLaunchProvider` and the templates move into `OdinVS.ProjectSystem`; pure logic (arg building, reference closure) goes to `OdinVS.Core`.
+
 ## Reference design (resolves brief's open question)
 Odin has no separate compilation of libraries: building a project compiles its package directory and all imported packages from source. So an Odin-to-Odin `ProjectReference` means "make this project's source importable", not "link this artifact".
 
@@ -99,7 +117,7 @@ LSP servers normally own diagnostics and push them (`textDocument/publishDiagnos
 
 ## Open decisions
 - **`OdinTargetsPath` resolution** (finding 6).
-- **CPS vs MPFProj**: decided by the spike result.
+- ~~CPS vs MPFProj~~ **Decided: CPS** (see "Project system decision").
 - **Collection naming and `import` convention** (collection root = project directory or its `OdinPackageDir`?).
 
 ## Conventions
@@ -177,7 +195,7 @@ Each item must be demonstrably true; "done" means checked off with a note of how
 - [x] Throwaway VSSDK VSIX builds with VS MSBuild and loads in Exp (done; see the loaded/MEF items below). Packages restored (nuget.org, user-approved) into the scratchpad spike `VsixSpike`: `Microsoft.VisualStudio.SDK` 17.14.40265, `Microsoft.VisualStudio.LanguageServer.Client` 17.14.60, `Microsoft.VSSDK.BuildTools` 18.9.820 (125 packages total, net472). The SDK/Client packages are the 17.14 line while VS is 18.11; confirm they load in VS 18 during this spike. **Build half done (scratchpad `VsixSpike` + `OdinSpike.Lsp`):** an SDK-style `net472` host project plus an `ILanguageClient`/content-type class library builds with VS MSBuild (`/restore /t:Rebuild`) into `VsixSpike.vsix`, which contains `OdinSpike.Lsp.dll` and a generated manifest with the MEF asset path resolved, so referenced-assembly packaging works. Needed settings: `VSSDKBuildToolsAutoSetup=true` on the host (otherwise no `.vsix` is produced, silently) and `CopyLocalLockFileAssemblies=false` on both projects (otherwise ~120 VS SDK DLLs are copied to the output). Still to do: install into the Exp hive, open a `.odin` file, confirm MEF discovery and `ActivateAsync` via `%TEMP%\odinspike.log`, and check the Exp `ComponentModelCache` error log.
 - [x] VSIX spike installed and loaded in VS Exp (18.11) with the 17.14-line SDK/Client packages: no `ComponentModelCache` `.err` file. **Caveat:** I passed `/admin` to `VSIXInstaller` (not needed, my mistake), which installed the spike per-machine under `...\IDE\Extensions\hcvrc1z3.w0e\`, so it is also active in the main VS instance; uninstall it via Manage Extensions. Use `/rootSuffix:Exp` without `/admin` next time.
 - [x] MEF discovery of `ILanguageClient` + content type from a referenced assembly: **works**. Opening `main.odin` in Exp logged `OnLoadedAsync`, `ActivateAsync`, `ols started`, `OnServerInitializedAsync` in `%TEMP%\odinspike.log`, so VS's client launched ols and completed `initialize`. Not yet checked: whether VS sends `didSave`, hover/completion, and diagnostics (needs `ols.json` with `odin_command`/`checker_path`); three `ols` processes were seen running afterwards (one is the spike's pid 19448, the others unexplained, possibly earlier test leftovers), so check ols is stopped on VS exit in M2.
-- [ ] CPS spike (see Project system), done in two phases so impossibilities surface cheaply. **Timebox:** no fixed cap; the user will run this in short stretches (a few hours at first) and may say stop at any time. **When told to stop, stop immediately and report progress so far** (which items are done, evidence, what is in flight, and the next step). Independently, stop and reassess as soon as any Phase A check returns "impossible". Record elapsed effort and the outcome of each item so the CPS-vs-MPFProj decision rests on measured effort.
+- [x] CPS spike (see Project system), done in two phases so impossibilities surface cheaply. **Timebox:** no fixed cap; the user will run this in short stretches (a few hours at first) and may say stop at any time. **When told to stop, stop immediately and report progress so far** (which items are done, evidence, what is in flight, and the next step). Independently, stop and reassess as soon as any Phase A check returns "impossible". Record elapsed effort and the outcome of each item so the CPS-vs-MPFProj decision rests on measured effort.
   - **Phase A: feasibility checks (reading and tiny probes; no project system built yet).** Each ends "feasible", "feasible with caveat: ...", or "impossible: ..." plus the evidence. Reading online docs needs network approval.
     - [x] A0 (feasible with caveat; spikes/cps-feasibility/FINDINGS.md) Authoring surface: CPS authoring packages exist for VS 18 (ask before any NuGet search), the `VSProjectSystem` docs still match, and at least one reference implementation of a custom CPS project type can be found to copy from. *Impossible if:* no public packages/APIs for VS 18, or the docs describe only internals.
     - [x] A1 (feasible; VS ships a pkgdef-registered CPS type to copy) Load: how a custom project type is registered (project type GUID, factory/capabilities, `.pkgdef`) and that a bare `.odinproj` can be opened as a CPS project from a `.sln`/`.slnx`. *Impossible if:* new project types cannot be defined (only flavored).
@@ -189,13 +207,13 @@ Each item must be demonstrably true; "done" means checked off with a note of how
     - [x] B1 Load (passed 2026-10-30): `spikes/cps-feasibility/sample/HelloOdin/HelloOdin.odinproj` opens in `CpsSpike.sln` in VS Exp 18.11 under our own project type GUID, and the toolbar shows Debug and x64 dropdowns. Needed: `ProjectFactoryPackage` in the pkgdef plus a BrowseObject rule schema (see FINDINGS.md).
     - [x] B2 File tree (passed 2026-10-30): HelloOdin > src > main.odin, util.odin appear, and a file added on disk while VS was open (live.odin) appeared within ~10 s. Needed: item rules (`OdinCompile.xaml` File context + `OdinCompile.BrowseObject.xaml`) and the `UseFileGlobs` capability.
     - [x] B3 Configurations (passed 2026-10-30; evidence in FINDINGS.md): in a solution containing the Odin project plus a C# and a C++ project, Debug and Release x64 appear in the Configuration Manager and the top-bar dropdown; switching either one switches all three projects, and the Odin project's stub target echoes the matching MSBuild property.
-    - [ ] B4 Add Item: Add > New Item opens VS's standard dialog, an "Odin File" template is listed, and choosing it creates an `.odin` file that appears in the tree and the `.odinproj`.
-    - [ ] B4-2 Add Project: File > New > Project and Add > New Project (the standard creation window) list an "Odin Executable" template. The window accepts a project name and location and generates a folder containing `<Name>.odinproj` and `src/main.odin` that opens, builds as far as the stub target allows, and is added to the solution. *Stretch, later:* more templates (dynamic library, static library).
+    - [x] B4 Add Item (passed 2026-10-30; see FINDINGS.md): Add > New Item opens VS's standard dialog, an "Odin File" template is listed, and choosing it creates an `.odin` file that appears in the tree and the `.odinproj`.
+    - [x] B4-2 Add Project (passed 2026-10-30; see FINDINGS.md): File > New > Project and Add > New Project (the standard creation window) list an "Odin Executable" template. The window accepts a project name and location and generates a folder containing `<Name>.odinproj` and `src/main.odin` that opens, builds as far as the stub target allows, and is added to the solution. *Stretch, later:* more templates (dynamic library, static library).
     - [x] B5 F5 stub (passed 2026-10-30): F5 (toolbar Start) launched the exe built by the project's Build target under the native debugger; Output > Debug showed HelloOdin.exe loading and exiting with code 0. Needed: `DebuggerFlavor`, VS's `DebuggerGeneral.xaml`, our `OdinDebugger.xaml`, and a small `[ExportDebugger("OdinDebugger")]` provider (see FINDINGS.md). Breakpoint binding is still the separate M0 item below.
-  - [ ] C Decision recorded: CPS go / no-go (and which sub-goals, if any, need MPFProj) with a short rationale and effort table, added to "Project system".
+  - [x] C Decision recorded (2026-10-30, see "Project system decision" below): CPS go / no-go (and which sub-goals, if any, need MPFProj) with a short rationale and effort table, added to "Project system".
 - [ ] A hand-built exe + PDB from `odin build -debug` hits a breakpoint in an `.odin` file when opened via Debug > Attach/Open as project (gate for M5).
 - [ ] `OdinTargetsPath` strategy chosen (finding 6).
-- [ ] Project system decision made and a one-page rationale added to this file.
+- [x] Project system decision made: **CPS** (see "Project system decision" below).
 
 ### M1 Colorization
 - [ ] Grammar chosen, license noted, checked in under `Grammars/`.

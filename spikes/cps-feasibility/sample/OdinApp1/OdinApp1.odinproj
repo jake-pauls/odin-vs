@@ -1,0 +1,27 @@
+<Project>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>2e9488e5-ae3e-4a28-a5cb-f3f16ac5d271</ProjectGuid>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Spike only: real distribution needs a defined $(OdinTargetsPath) (CLAUDE.md, finding 6). -->
+    <OdinTargetsPath Condition="'$(OdinTargetsPath)' == ''">D:\Projects\Vibe\odin-vs\spikes\cps-feasibility\sample\odin-build\</OdinTargetsPath>
+    <Configurations>Debug;Release</Configurations>
+    <Platforms>x64</Platforms>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <OdinCompile Include="src\**\*.odin" />
+  </ItemGroup>
+  <Import Project="$(OdinTargetsPath)Odin.targets" />
+</Project>

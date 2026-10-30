@@ -34,5 +34,13 @@
     <Content Include="OdinCps.pkgdef">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Templates\ProjectTemplates\**\*">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>ProjectTemplates\%(RecursiveDir)</VSIXSubPath>
+    </Content>
+    <Content Include="Templates\ItemTemplates\**\*">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>ItemTemplates\%(RecursiveDir)</VSIXSubPath>
+    </Content>
   </ItemGroup>
 </Project>
