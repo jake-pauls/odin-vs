@@ -13,6 +13,15 @@
     <ProjectCapability Include="UseFileGlobs" />
   </ItemGroup>
 
+  <!-- B3 stub: proves the solution configuration reaches the project. Real targets replace these in M3. -->
+  <Target Name="Build">
+    <Message Importance="high" Text="ODIN-STUB Build: Configuration=$(Configuration) Platform=$(Platform) Project=$(MSBuildProjectName)" />
+  </Target>
+  <Target Name="Clean">
+    <Message Importance="high" Text="ODIN-STUB Clean: Configuration=$(Configuration) Platform=$(Platform)" />
+  </Target>
+  <Target Name="Rebuild" DependsOnTargets="Clean;Build" />
+
   <ItemGroup>
     <PropertyPageSchema Include="$(OdinRulesDir)OdinProjectItemsSchema.xaml">
       <Context>Project</Context>
