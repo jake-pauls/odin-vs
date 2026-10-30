@@ -6,6 +6,16 @@
     <OdinRulesDir>$(MSBuildThisFileDirectory)Rules\</OdinRulesDir>
   </PropertyGroup>
 
+  <!-- Built from the final Configurations value, so a project that sets its own list is honored (the props import runs before the
+       project body). One platform only (x64): static evaluation, which CPS uses, cannot batch over two item lists. -->
+  <ItemGroup>
+    <_OdinConfiguration Include="$(Configurations)" />
+    <_OdinConfigurationId Include="@(_OdinConfiguration->'%(Identity)|$(Platform)')" />
+    <ProjectConfiguration Include="@(_OdinConfigurationId)">
+      <Configuration>$([System.String]::Copy('%(Identity)').Split('|')[0])</Configuration>
+      <Platform>$(Platform)</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
   <ItemGroup>
     <ProjectCapability Include="OdinProject" />
     <ProjectCapability Include="ProjectConfigurationsDeclaredAsItems" />

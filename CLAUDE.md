@@ -95,6 +95,7 @@ LSP servers normally own diagnostics and push them (`textDocument/publishDiagnos
 
 ## Open decisions
 - ~~`OdinTargetsPath` resolution~~ **Decided: MSBuild SDK `Odin.Sdk` shipped as a NuGet package** (finding 6; see `spikes/odin-targets-path/FINDINGS.md`). Remaining: where the feed lives (M3).
+- **Decided (user, 2026-10-30): `.odinproj` authors own their file list.** The SDK adds no `OdinCompile` glob or other items; each project (and its template) lists its own, e.g. `<OdinCompile Include="src\**\*.odin" />`. Intent: the `.odinproj` stays the readable source of truth, with no hidden defaults about what compiles. The SDK only supplies conditional defaults that a project can override, following `Microsoft.NET.Sdk`: `Configurations` = `Debug;Release`, `Configuration` = `Debug`, `Platforms`/`Platform` = `x64` (single platform for now). See `spikes/odin-targets-path/FINDINGS.md`.
 - ~~CPS vs MPFProj~~ **Decided: CPS** (see "Project system decision").
 - **Where the `odin.exe` location and default build flags come from** (stretch, late milestone; PR #1 review): `Odin.targets` must not hard-code `C:\Program Files\Odin\odin\dist\odin.exe` for every user. Read it from a user-level setting (the extension's options page, written to a per-user file the targets read), then PATH. Likewise let users extend the default flags (`-strict-style`, plus `-debug` only when `$(Configuration)` is `Debug`) via `OdinExtraArgs`. Interacts with finding 6.
 - **Collection naming and `import` convention** (collection root = project directory or its `OdinPackageDir`?).
