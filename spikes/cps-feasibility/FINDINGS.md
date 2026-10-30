@@ -47,3 +47,13 @@ No check came back "impossible". The main risks are old docs and missing 18.x au
 
 ## Suggested Phase B order
 B1 Load (pkgdef from `msbuildproj.pkgdef`) -> B3 Configurations (decisive criterion) -> B2 File tree -> B5 F5 stub -> B4 Add Item -> B4-2 Add Project.
+
+## Phase B1 (Load): first attempts, not yet passing
+
+Setup: `OdinCpsSpike` VSIX (pkgdef only) installed into the Exp hive with `VSIXInstaller /rootSuffix:Exp`; `sample/CpsSpike.sln` opened from the Exp recent-solutions list.
+
+1. **Own project type GUID, pkgdef only: "Unsupported".** VS showed "Review Project And Solution Changes: Unsupported ... `HelloOdin.odinproj`". The activity log from the first launch shows `odincps.pkgdef` was read, so the registration was processed; the likely cause is that no project factory object exists for our new GUID (CPS's package provides its factory only for the GUIDs it knows). **Verified:** unsupported. **Unverified:** the cause.
+2. **Built-in `.msbuildproj` type, same project body: recognized but "(unloaded)".** A scratch probe solution using type GUID `{13B669BE-BB05-4DDF-9536-439F39A36129}` and `HelloOdin.msbuildproj` showed `Solution 'Probe' (0 of 1 project)` with `HelloOdin (unloaded)`. The CPS `ProjectPackage` ({3347BEE8-...}) loaded during the open, and the activity log contains no project-load error. So registration through the shipped type works as far as recognition, but a bare project body is not enough to load.
+3. **Mistake worth remembering:** `devenv /log` takes a file name. I passed it the `.sln` path first, VS wrote its activity log over `CpsSpike.sln` (2.3 MB UTF-16 XML), and the solution "could not be opened". Restored from git with `git restore` (committed version intact). The log content is useful: it proved the pkgdef was loaded.
+
+Next ideas, in order: (a) find why the `.msbuildproj` probe is unloaded (needed capabilities/imports; compare with VS's own `.msbuildproj` template if any, or strings in the CPS assemblies); (b) work out how a new GUID gets a factory (read `dotnet/project-system` registration, check CPS package `ProvideProjectFactory`/related attributes); (c) fall back to the MPFProj-style package-provided factory only for registration while keeping CPS for everything else (hybrid).
