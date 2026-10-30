@@ -1,0 +1,14 @@
+; B1 spike: register .odinproj as a CPS-based project type, modeled on the msbuildproj.pkgdef that ships in VS 18.11
+; (Common7\IDE\CommonExtensions\Microsoft\Project\msbuildproj.pkgdef). Project type GUID is ours; the Package GUID is the
+; CPS package that VS's own msbuildproj type uses.
+[$RootKey$\Projects\{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}]
+@="ProjectFactory"
+"DisplayName"="Odin Project (spike)"
+"DisplayProjectFileExtensions"="Odin Project Files (*.odinproj);*.odinproj"
+"Package"="{3347BEE8-D7A1-4082-95E4-38A439553CC2}"
+"DefaultProjectExtension"="odinproj"
+"PossibleProjectExtensions"="odinproj"
+"DisableAsynchronousSolutionLoad"=dword:00000000
+"DisableAsynchronousProjectTreeLoad"=dword:00000001
+"PrefetchFactory"="{3998970A-AEE1-4216-A54F-0A99D20A1FAB}"
+"Capabilities"="HandlesOwnReload;OpenProjectFile;EnableOnDemandExcludedFolderLoading"
