@@ -5,8 +5,8 @@ using Task = System.Threading.Tasks.Task;
 
 namespace OdinVS.LanguageServer;
 
-// Reshapes ols diagnostics on their way into VS: code becomes ols.<code>, source becomes "ols", and the Error List
-// Project column shows the Odin package declared in the file.
+// Reshapes ols diagnostics on their way into VS: code becomes ols.<code>. Anything that goes wrong here must still
+// forward the diagnostics as received, or VS shows none (see docs/pitfalls.md).
 internal sealed class OlsMiddleLayer(Log log) : ILanguageClientMiddleLayer2<JToken>
 {
     private const string PublishDiagnostics = "textDocument/publishDiagnostics";
@@ -15,21 +15,23 @@ internal sealed class OlsMiddleLayer(Log log) : ILanguageClientMiddleLayer2<JTok
 
     public Task HandleNotificationAsync(string methodName, JToken methodParam, Func<JToken, Task> sendNotification)
     {
-        if (methodParam["diagnostics"] is JArray diagnostics)
+        try
         {
-            string? package = ReadPackageName(methodParam["uri"]?.ToString());
-            foreach (JToken diagnostic in diagnostics)
+            if (methodParam["diagnostics"] is JArray diagnostics)
             {
-                if (diagnostic is JObject entry)
+                log.Write($"publishDiagnostics {methodParam["uri"]}: {diagnostics.Count} diagnostics");
+                foreach (JToken diagnostic in diagnostics)
                 {
-                    entry["code"] = OlsDiagnosticCode.Rewrite(entry["code"]?.ToString());
-                    entry["source"] = OlsDiagnosticCode.Prefix;
-                    if (package is not null)
+                    if (diagnostic is JObject entry)
                     {
-                        entry["_vs_projects"] = new JArray(new JObject { ["_vs_projectName"] = package });
+                        entry["code"] = OlsDiagnosticCode.Rewrite(entry["code"]?.ToString());
                     }
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            log.Write($"could not reshape diagnostics, forwarding as received: {ex}");
         }
 
         return sendNotification(methodParam);
@@ -37,28 +39,4 @@ internal sealed class OlsMiddleLayer(Log log) : ILanguageClientMiddleLayer2<JTok
 
     public Task<JToken?> HandleRequestAsync(string methodName, JToken methodParam, Func<JToken, Task<JToken?>> sendRequest) =>
         sendRequest(methodParam);
-
-    // Diagnostics arrive on save, so the file on disk is what ols checked.
-    private string? ReadPackageName(string? uri)
-    {
-        if (uri is null || !Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed) || !parsed.IsFile)
-        {
-            return null;
-        }
-
-        try
-        {
-            return OdinPackageName.Find(File.ReadAllText(parsed.LocalPath));
-        }
-        catch (IOException ex)
-        {
-            log.Write($"could not read {parsed.LocalPath} for its package name: {ex.Message}");
-            return null;
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            log.Write($"could not read {parsed.LocalPath} for its package name: {ex.Message}");
-            return null;
-        }
-    }
 }

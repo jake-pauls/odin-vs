@@ -168,6 +168,7 @@ Rules: every Core change ships with a tier-1 test; every `Odin.targets` change s
 
 Build/test commands (record real ones here as they are established):
 - Build VSIX: VS MSBuild with `/restore` (see skill). Unit tests: `dotnet test tests/OdinVS.Core.Tests`.
+- Rebuild, reinstall into Exp and launch it on a sample: `scripts\exp-reinstall.ps1 [-Bump] [-OpenFile <path>]` (closes any running Exp, `-Bump` raises the manifest patch version). Known quirks are in `docs/pitfalls.md`.
 - Experimental instance: F5 from the host project. Verify installs in the instance, not by exit code.
 - Uninstall via Manage Extensions, not `VSIXInstaller /u`.
 

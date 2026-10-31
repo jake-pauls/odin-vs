@@ -120,6 +120,29 @@ public sealed class OlsDiagnosticCodeTests
 }
 
 [TestClass]
+public sealed class FileUriPathTests
+{
+    [TestMethod]
+    [DataRow("file:///D%3A/Projects/odin-vs/main.odin", @"D:\Projects\odin-vs\main.odin")]
+    [DataRow("file:///d:/Projects/odin-vs/main.odin", @"d:\Projects\odin-vs\main.odin")]
+    [DataRow("file:///C%3A/My%20Code/main.odin", @"C:\My Code\main.odin")]
+    [DataRow("file://server/share/main.odin", @"\\server\share\main.odin")]
+    public void DecodesWindowsPaths(string uri, string expected)
+    {
+        Assert.AreEqual(expected, FileUriPath.ToLocalPath(uri));
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("not a uri")]
+    [DataRow("https://example.com/main.odin")]
+    public void ReturnsNullForNonFileUris(string? uri)
+    {
+        Assert.IsNull(FileUriPath.ToLocalPath(uri));
+    }
+}
+
+[TestClass]
 public sealed class OdinPackageNameTests
 {
     [TestMethod]
