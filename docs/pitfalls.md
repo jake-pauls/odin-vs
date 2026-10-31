@@ -4,7 +4,7 @@ Verified problems and their workarounds. Add new ones with how they were verifie
 
 ## `Uri.LocalPath` breaks on ols file URIs
 ols sends drive-letter URIs with the colon percent-encoded: `file:///D%3A/Projects/x/main.odin`. On .NET Framework `new Uri(uri).LocalPath` gives `/D:/Projects/x/main.odin`, and `File.ReadAllText` on that throws `System.NotSupportedException: The given path's format is not supported.`
-Use `FileUriPath.ToLocalPath` (`OdinVS.Core`, unit-tested) instead. Verified in the Exp instance on 2026-10-30 (log line `could not read /D:/Projects/...`).
+Decode the URI yourself: `Uri.UnescapeDataString(uri.AbsolutePath)`, drop the leading `/` before a drive letter, swap `/` for `\`, and handle a non-empty `Host` as a UNC path. We had a tested helper for this (`FileUriPath`, removed again in the M2 branch once nothing used it; it is in commit `e0460c8`). Verified in the Exp instance on 2026-10-30 (log line `could not read /D:/Projects/...`).
 
 ## An exception in the diagnostics middle layer hides every diagnostic
 `OlsMiddleLayer` sits between ols and VS. If `HandleNotificationAsync` throws before `sendNotification`, VS receives nothing: no squiggles and an empty Error List, while the log still shows ols publishing. The reshaping is therefore wrapped in a catch-all that logs and forwards the original. Keep any new reshaping inside that `try`, and catch `Exception` there, not just I/O exceptions. This cost several rebuild cycles on 2026-10-30 because the earlier catch covered only `IOException`.

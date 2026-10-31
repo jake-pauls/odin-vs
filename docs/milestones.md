@@ -81,8 +81,10 @@ Decided 2026-10-30 (user): use the ols grammar, pinned to a commit so updates an
 - [ ] Build/Clean/Rebuild from the menu; errors reach the Error List; double-click navigates.
 - [ ] Configuration Manager shows Debug/Release x64 and switching changes output.
 - [ ] Template creates a working project via File > New.
+- [ ] (from M2) User-visible warnings, shown only when the user has an `.odinproj` open and so expects Odin support to work: `odin.exe` or `ols.exe` missing, and installed odin not matching the bundled ols (`BundledOls.Version`). Today both only go to `%LOCALAPPDATA%\OdinVS\odinvs.log`; nothing is shown in the VS UI (the Error List, an info bar or the Output window are the candidates; pick one). Verify each in Exp by actually hiding `odin.exe`/`ols.exe` and by running with a mismatched pinned version.
 
 ### M5 Debugging
+- [ ] (from M2) Re-check the `wordPattern` completion span (where a completion replaces from, for identifiers and `1.5f`-style tokens) together with the open auto-close of `( { [ " '` item from M1, since both depend on the language configuration. Do it in more depth than the M2 check, which was closed on the user's decision.
 - [ ] F5 launches `$(TargetPath)` with project working dir and args.
 - [ ] Breakpoints in `.odin` bind and hit; Locals/Watch usable for ints, strings, slices (note gaps).
 - [ ] Ctrl+F5 runs without debugger.
