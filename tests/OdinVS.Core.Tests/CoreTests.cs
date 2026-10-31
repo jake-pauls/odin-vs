@@ -93,3 +93,28 @@ public sealed class OlsConfigTests
         StringAssert.Contains(json, "{ \"name\": \"hellolib\", \"path\": \"C:\\\\libs\\\\hellolib\" }");
     }
 }
+
+[TestClass]
+public sealed class OlsDiagnosticCodeTests
+{
+    [TestMethod]
+    [DataRow("checker", "ols.checker")]
+    [DataRow("syntax_error", "ols.syntax_error")]
+    [DataRow("ols.checker", "ols.checker")]
+    [DataRow("ols", "ols")]
+    [DataRow(" checker ", "ols.checker")]
+    [DataRow("42", "ols.42")]
+    public void PrefixesOlsCodes(string code, string expected)
+    {
+        Assert.AreEqual(expected, OlsDiagnosticCode.Rewrite(code));
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("  ")]
+    public void MissingCodeBecomesPlainOls(string? code)
+    {
+        Assert.AreEqual("ols", OlsDiagnosticCode.Rewrite(code));
+    }
+}

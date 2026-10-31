@@ -12,7 +12,7 @@ namespace OdinVS.LanguageServer;
 // Public and MEF-exported because VS discovers language clients through composition.
 [ContentType(OdinContentType.Name)]
 [Export(typeof(ILanguageClient))]
-public sealed class OdinLanguageClient : ILanguageClient
+public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomMessage2
 {
     private readonly Log log = Log.Default;
     private readonly OlsProcess launcher;
@@ -30,6 +30,12 @@ public sealed class OdinLanguageClient : ILanguageClient
     public IEnumerable<string>? FilesToWatch => null;
 
     public bool ShowNotificationOnInitializeFailed => true;
+
+    public object? MiddleLayer { get; } = new OlsMiddleLayer();
+
+    public object? CustomMessageTarget => null;
+
+    public Task AttachForCustomMessageAsync(StreamJsonRpc.JsonRpc rpc) => Task.CompletedTask;
 
     public event AsyncEventHandler<EventArgs>? StartAsync;
 
