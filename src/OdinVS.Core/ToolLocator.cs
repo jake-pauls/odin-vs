@@ -2,17 +2,13 @@ namespace OdinVS.Core;
 
 internal sealed class ToolLocator(Func<string, bool> fileExists)
 {
+    // Relative PATH entries (".", "bin") are skipped so a tool is never picked up from the current directory.
     public string? Find(string fileName, IEnumerable<string> searchDirectories, IEnumerable<string> fallbackPaths)
     {
         foreach (string directory in searchDirectories)
         {
-            if (string.IsNullOrWhiteSpace(directory))
-            {
-                continue;
-            }
-
-            string candidate = Path.Combine(directory.Trim().Trim('"'), fileName);
-            if (fileExists(candidate))
+            string? candidate = Combine(directory, fileName);
+            if (candidate is not null && fileExists(candidate))
             {
                 return candidate;
             }
@@ -27,5 +23,18 @@ internal sealed class ToolLocator(Func<string, bool> fileExists)
         }
 
         return null;
+    }
+
+    private static string? Combine(string directory, string fileName)
+    {
+        string trimmed = directory.Trim().Trim('"');
+        try
+        {
+            return trimmed.Length > 0 && Path.IsPathRooted(trimmed) ? Path.Combine(trimmed, fileName) : null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 }

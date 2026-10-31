@@ -19,8 +19,9 @@ internal sealed class Log(string path)
                 File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");
             }
         }
-        catch (IOException)
+        catch (Exception)
         {
+            // Logging must never take VS down; it is called from threadpool callbacks.
         }
     }
 }

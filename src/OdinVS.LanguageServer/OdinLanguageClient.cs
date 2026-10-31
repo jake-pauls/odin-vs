@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Diagnostics;
 using Microsoft.VisualStudio.LanguageServer.Client;
@@ -16,9 +17,14 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
 {
     private readonly Log log = Log.Default;
     private readonly OlsProcess launcher;
+    private readonly object gate = new();
     private StartedOls? started;
 
-    public OdinLanguageClient() => launcher = new OlsProcess(log);
+    public OdinLanguageClient()
+    {
+        launcher = new OlsProcess(log);
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => StopProcess();
+    }
 
     public string Name => "Odin Language Server";
 
@@ -48,16 +54,20 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
         await Task.Yield();
         StopProcess();
 
-        started = launcher.Start();
-        if (started is null)
+        StartedOls? next = launcher.Start();
+        lock (gate)
+        {
+            started = next;
+        }
+
+        if (next is null)
         {
             return null;
         }
 
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => StopProcess();
-        string odinPath = started.OdinPath;
+        string odinPath = next.OdinPath;
         _ = Task.Run(() => CheckVersions(odinPath), token);
-        return new Connection(started.Process.StandardOutput.BaseStream, started.Process.StandardInput.BaseStream);
+        return new Connection(next.Process.StandardOutput.BaseStream, next.Process.StandardInput.BaseStream);
     }
 
     public Task OnLoadedAsync()
@@ -97,8 +107,13 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
 
     private void StopProcess()
     {
-        Process? running = started?.Process;
-        started = null;
+        Process? running;
+        lock (gate)
+        {
+            running = started?.Process;
+            started = null;
+        }
+
         if (running is null)
         {
             return;
@@ -106,13 +121,14 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
 
         try
         {
-            if (!running.HasExited && !running.WaitForExit(2000))
+            if (!running.HasExited)
             {
                 running.Kill();
             }
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
         {
+            log.Write($"could not stop ols: {ex.Message}");
         }
         finally
         {

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
+using System.Text;
 using OdinVS.Core;
 
 namespace OdinVS.LanguageServer;
@@ -10,31 +11,26 @@ internal sealed record StartedOls(Process Process, string OdinPath, OlsSettings 
 // Resolves odin and ols and starts ols with stdio piped. Returns null (after logging) when it cannot.
 internal sealed class OlsProcess(Log log)
 {
-    private const string OdinFallback = @"C:\Program Files\Odin\odin\dist\odin.exe";
-
-    // Lives for the VS process; the OS closes the handle on exit, which kills ols.
-    private static readonly KillOnCloseJob Job = new();
+    // Lives for the VS process; the OS closes the handle on exit, which kills ols. Null if the job could not be created.
+    private static readonly Lazy<KillOnCloseJob?> Job = new(CreateJob);
 
     public StartedOls? Start()
     {
         string extensionDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
-        ToolLocator locator = new(File.Exists);
-
-        string? ols = locator.Find("ols.exe", [Path.Combine(extensionDirectory, "ols")], []);
-        if (ols is null)
+        ResolvedTools tools = new ToolResolver(new ToolLocator(File.Exists))
+            .Resolve(extensionDirectory, Environment.GetEnvironmentVariable("PATH"));
+        if (tools.Ols is null || tools.Odin is null)
         {
-            log.Write($"ols.exe not found under {extensionDirectory}{Path.DirectorySeparatorChar}ols; language server disabled.");
+            foreach (string problem in tools.Problems)
+            {
+                log.Write($"{problem}; language server disabled.");
+            }
+
             return null;
         }
 
-        string[] pathDirectories = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator);
-        string? odin = locator.Find("odin.exe", pathDirectories, [OdinFallback]);
-        if (odin is null)
-        {
-            log.Write($"odin.exe not found on PATH or at {OdinFallback}; language server disabled.");
-            return null;
-        }
-
+        string ols = tools.Ols;
+        string odin = tools.Odin;
         ProcessStartInfo startInfo = new(ols)
         {
             WorkingDirectory = Path.GetDirectoryName(ols)!,
@@ -53,7 +49,7 @@ internal sealed class OlsProcess(Log log)
                 log.Write($"ols stderr: {e.Data}");
             }
         };
-        process.Exited += (_, _) => log.Write($"ols exited with code {process.ExitCode}");
+        process.Exited += (_, _) => LogExit(process);
 
         try
         {
@@ -67,7 +63,7 @@ internal sealed class OlsProcess(Log log)
 
         try
         {
-            Job.Add(process);
+            Job.Value?.Add(process);
         }
         catch (InvalidOperationException ex)
         {
@@ -85,23 +81,74 @@ internal sealed class OlsProcess(Log log)
     {
         try
         {
-            using Process process = Process.Start(new ProcessStartInfo(odin, "version")
+            using Process? process = Process.Start(new ProcessStartInfo(odin, "version")
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
-            })!;
-            string output = process.StandardOutput.ReadToEnd();
+            });
+            if (process is null)
+            {
+                return null;
+            }
+
+            StringBuilder output = new();
+            process.OutputDataReceived += (_, e) =>
+            {
+                lock (output)
+                {
+                    output.AppendLine(e.Data);
+                }
+            };
+            process.BeginOutputReadLine();
             if (!process.WaitForExit(5000))
             {
                 process.Kill();
+                log.Write("'odin version' did not finish within 5 seconds");
+                return null;
             }
 
-            return output;
+            // The parameterless overload waits for the redirected output to be fully consumed.
+            process.WaitForExit();
+            lock (output)
+            {
+                return output.ToString();
+            }
         }
         catch (Win32Exception ex)
         {
             log.Write($"could not run 'odin version': {ex.Message}");
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            log.Write($"could not run 'odin version': {ex.Message}");
+            return null;
+        }
+    }
+
+    // Runs on a threadpool thread, possibly after StopProcess disposed the process, so it must not throw.
+    private void LogExit(Process process)
+    {
+        try
+        {
+            log.Write($"ols exited with code {process.ExitCode}");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+        {
+            log.Write("ols exited");
+        }
+    }
+
+    private static KillOnCloseJob? CreateJob()
+    {
+        try
+        {
+            return new KillOnCloseJob();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Log.Default.Write($"could not create the ols job object, ols may outlive VS: {ex.Message}");
             return null;
         }
     }

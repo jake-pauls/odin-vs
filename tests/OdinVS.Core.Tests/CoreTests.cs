@@ -8,21 +8,32 @@ public sealed class ToolLocatorTests
     [TestMethod]
     public void FindsFirstSearchDirectoryHit()
     {
-        ToolLocator locator = new(p => p == Path.Combine("b", "odin.exe"));
-        Assert.AreEqual(Path.Combine("b", "odin.exe"), locator.Find("odin.exe", ["a", "b"], ["fallback"]));
+        ToolLocator locator = new(p => p == Path.Combine("C:\\b", "odin.exe"));
+        Assert.AreEqual(Path.Combine("C:\\b", "odin.exe"), locator.Find("odin.exe", ["C:\\a", "C:\\b"], ["fallback"]));
     }
 
     [TestMethod]
     public void FallsBackWhenNotInSearchDirectories()
     {
         ToolLocator locator = new(p => p == "fallback");
-        Assert.AreEqual("fallback", locator.Find("odin.exe", ["a", ""], ["fallback"]));
+        Assert.AreEqual("fallback", locator.Find("odin.exe", ["C:\\a", ""], ["fallback"]));
     }
 
     [TestMethod]
     public void ReturnsNullWhenMissing()
     {
-        Assert.IsNull(new ToolLocator(_ => false).Find("odin.exe", ["a"], ["f"]));
+        Assert.IsNull(new ToolLocator(_ => false).Find("odin.exe", ["C:\\a"], ["f"]));
+    }
+
+    [TestMethod]
+    [DataRow(".")]
+    [DataRow("bin")]
+    [DataRow("\"\"")]
+    [DataRow("  ")]
+    public void SkipsRelativeAndEmptyEntries(string entry)
+    {
+        ToolLocator locator = new(_ => true);
+        Assert.IsNull(locator.Find("odin.exe", [entry], []));
     }
 
     [TestMethod]
@@ -30,6 +41,58 @@ public sealed class ToolLocatorTests
     {
         ToolLocator locator = new(p => p == Path.Combine("C:\\x y", "odin.exe"));
         Assert.IsNotNull(locator.Find("odin.exe", ["\"C:\\x y\""], []));
+    }
+}
+
+[TestClass]
+public sealed class ToolResolverTests
+{
+    private const string Extension = "C:\\ext";
+    private static readonly string Ols = Path.Combine(Extension, "ols", "ols.exe");
+    private static readonly string OdinOnPath = Path.Combine("C:\\tools", "odin.exe");
+
+    [TestMethod]
+    public void ResolvesBothTools()
+    {
+        ToolResolver resolver = new(new ToolLocator(p => p == Ols || p == OdinOnPath));
+        ResolvedTools tools = resolver.Resolve(Extension, "C:\\other;C:\\tools");
+        Assert.AreEqual(Ols, tools.Ols);
+        Assert.AreEqual(OdinOnPath, tools.Odin);
+        Assert.IsEmpty(tools.Problems);
+    }
+
+    [TestMethod]
+    public void FallsBackToTheDefaultOdinLocation()
+    {
+        ToolResolver resolver = new(new ToolLocator(p => p == Ols || p == ToolResolver.OdinFallback));
+        Assert.AreEqual(ToolResolver.OdinFallback, resolver.Resolve(Extension, null).Odin);
+    }
+
+    [TestMethod]
+    public void ReportsMissingOdin()
+    {
+        ToolResolver resolver = new(new ToolLocator(p => p == Ols));
+        ResolvedTools tools = resolver.Resolve(Extension, "C:\\tools");
+        Assert.IsNull(tools.Odin);
+        Assert.HasCount(1, tools.Problems);
+        StringAssert.Contains(tools.Problems[0], "odin.exe not found");
+    }
+
+    [TestMethod]
+    public void ReportsMissingOls()
+    {
+        ToolResolver resolver = new(new ToolLocator(p => p == OdinOnPath));
+        ResolvedTools tools = resolver.Resolve(Extension, "C:\\tools");
+        Assert.IsNull(tools.Ols);
+        Assert.HasCount(1, tools.Problems);
+        StringAssert.Contains(tools.Problems[0], "ols.exe not found");
+    }
+
+    [TestMethod]
+    public void ReportsBothWhenNothingIsInstalled()
+    {
+        ResolvedTools tools = new ToolResolver(new ToolLocator(_ => false)).Resolve(Extension, "C:\\tools");
+        Assert.HasCount(2, tools.Problems);
     }
 }
 

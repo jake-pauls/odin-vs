@@ -15,8 +15,8 @@ Use `FileUriPath.ToLocalPath` (`OdinVS.Core`, unit-tested) instead. Verified in 
 ## The Error List "Source" column is not the LSP `source` field
 The Source column showed "IntelliSense" even when the middle layer set `source = "ols"`; the column is a VS category for language-server diagnostics. Setting `source` has no visible effect in the Error List, so it is not set. The Code column and the squiggle tooltip prefix do come from `code`.
 
-## First launch after an install does not load the extension
-After `VSIXInstaller /rootSuffix:Exp`, the first Exp launch left no Odin features (no `OnLoadedAsync` in `%LOCALAPPDATA%\OdinVS\odinvs.log`). Closing it, running `devenv /rootSuffix Exp /updateconfiguration` again and launching a second time on an `.odin` file worked every time (0.2.5, 0.2.9, 0.2.11). A bare warm-up launch without a file did not. The cause is not known. `scripts/exp-reinstall.ps1` does the sequence.
+## `&` does not wait for VSIXInstaller or devenv
+`VSIXInstaller.exe` and `devenv.exe /updateconfiguration` are GUI-subsystem programs, so calling them with `&` in PowerShell returns before they finish. Launching Exp straight afterwards raced the install and left no Odin features (no `OnLoadedAsync` in `%LOCALAPPDATA%\OdinVS\odinvs.log`); a second launch happened to work, so we first worked around it with a launch, close, launch sequence. With `Start-Process -Wait` (as `scripts/exp-reinstall.ps1` does now) a single launch loaded the extension (observed twice, 2026-10-30). The race was suggested by a code review and fits this evidence; it was not proven in isolation.
 
 ## The Exp instance must be closed before reinstalling
-The installer cannot replace the extension while an Exp `devenv.exe` holds it. The script closes Exp processes (matched by `/rootSuffix Exp` on the command line) first.
+The installer cannot replace the extension while an Exp `devenv.exe` holds it. The script asks Exp processes (matched by `/rootSuffix Exp` on the command line) to close, and force-kills them after 15 seconds. Unsaved edits to a sample open in Exp can otherwise end up in a commit, as happened with `broken/main.odin`.
