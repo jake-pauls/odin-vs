@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using OdinVS.Core;
@@ -9,10 +10,10 @@ internal sealed record StartedOls(Process Process, string OdinPath, OlsSettings 
 // Resolves odin and ols and starts ols with stdio piped. Returns null (after logging) when it cannot.
 internal sealed class OlsProcess(Log log)
 {
+    private const string OdinFallback = @"C:\Program Files\Odin\odin\dist\odin.exe";
+
     // Lives for the VS process; the OS closes the handle on exit, which kills ols.
     private static readonly KillOnCloseJob Job = new();
-
-    private const string OdinFallback = @"C:\Program Files\Odin\odin\dist\odin.exe";
 
     public StartedOls? Start()
     {
@@ -58,7 +59,7 @@ internal sealed class OlsProcess(Log log)
         {
             process.Start();
         }
-        catch (System.ComponentModel.Win32Exception ex)
+        catch (Win32Exception ex)
         {
             log.Write($"failed to start ols: {ex.Message}; language server disabled.");
             return null;
@@ -98,7 +99,7 @@ internal sealed class OlsProcess(Log log)
 
             return output;
         }
-        catch (System.ComponentModel.Win32Exception ex)
+        catch (Win32Exception ex)
         {
             log.Write($"could not run 'odin version': {ex.Message}");
             return null;

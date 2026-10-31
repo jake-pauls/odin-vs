@@ -4,7 +4,7 @@ namespace OdinVS.Core;
 
 internal readonly record struct OdinVersion(int Year, int Month)
 {
-    private static readonly Regex Pattern = new(@"dev-(\d{4})-(\d{2})", RegexOptions.Compiled);
+    private static readonly Regex Pattern = new(@"dev-([0-9]{4})-([0-9]{2})", RegexOptions.Compiled);
 
     // Accepts "dev-2026-10", "dev-2026-10-nightly:84bc3fc" or a line containing either.
     public static OdinVersion? Parse(string? text)

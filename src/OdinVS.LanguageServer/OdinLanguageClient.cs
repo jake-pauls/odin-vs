@@ -84,8 +84,15 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
 
     private void CheckVersions(string odinPath)
     {
-        string? warning = VersionCompatibility.Check(launcher.ReadOdinVersion(odinPath), BundledOls.Version);
-        log.Write(warning is null ? $"bundled ols {BundledOls.Version} matches installed odin" : $"WARNING: {warning}");
+        try
+        {
+            string? warning = VersionCompatibility.Check(launcher.ReadOdinVersion(odinPath), BundledOls.Version);
+            log.Write(warning is null ? $"bundled ols {BundledOls.Version} matches installed odin" : $"WARNING: {warning}");
+        }
+        catch (Exception ex)
+        {
+            log.Write($"version check failed: {ex.Message}");
+        }
     }
 
     private void StopProcess()
