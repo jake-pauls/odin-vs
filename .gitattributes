@@ -1,0 +1,2 @@
+# Vendored upstream grammar: keep bytes stable (core.autocrlf would otherwise rewrite line endings and change the hash in Grammars/README.md).
+src/OdinVS/Grammars/odin.tmLanguage.json -text
