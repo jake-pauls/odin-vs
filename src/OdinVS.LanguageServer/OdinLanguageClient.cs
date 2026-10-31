@@ -31,7 +31,7 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
 
     public bool ShowNotificationOnInitializeFailed => true;
 
-    public object? MiddleLayer { get; } = new OlsMiddleLayer();
+    public object? MiddleLayer { get; } = new OlsMiddleLayer(Log.Default);
 
     public object? CustomMessageTarget => null;
 

@@ -118,3 +118,27 @@ public sealed class OlsDiagnosticCodeTests
         Assert.AreEqual("ols", OlsDiagnosticCode.Rewrite(code));
     }
 }
+
+[TestClass]
+public sealed class OdinPackageNameTests
+{
+    [TestMethod]
+    [DataRow("package main\n\nimport \"core:fmt\"\n", "main")]
+    [DataRow("package greeter\r\n", "greeter")]
+    [DataRow("// header\n/* block\npackage fake\n*/\n#+build windows\npackage real_pkg\n", "real_pkg")]
+    [DataRow("\tpackage tabbed", "tabbed")]
+    public void FindsDeclaration(string source, string expected)
+    {
+        Assert.AreEqual(expected, OdinPackageName.Find(source));
+    }
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("main :: proc() {}\n")]
+    [DataRow("// package commented\n")]
+    public void ReturnsNullWithoutDeclaration(string? source)
+    {
+        Assert.IsNull(OdinPackageName.Find(source));
+    }
+}
