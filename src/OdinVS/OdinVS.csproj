@@ -45,5 +45,21 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <None Include="Grammars\README.md" />
+    <None Include="ols\ols.pin" />
   </ItemGroup>
+  <!-- The VSIX must not ship an ols.exe that differs from the one vetted for BundledOls.Version (see ols\ols.pin). -->
+  <Target Name="VerifyBundledOls" BeforeTargets="BeforeBuild">
+    <PropertyGroup>
+      <OlsPinText>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)\ols\ols.pin'))</OlsPinText>
+      <OlsPinnedHash>$([System.Text.RegularExpressions.Regex]::Replace('$(OlsPinText)', '(?s).*sha256=([0-9a-fA-F]{64}).*', '$1'))</OlsPinnedHash>
+    </PropertyGroup>
+    <GetFileHash Files="$(MSBuildProjectDirectory)\ols\ols.exe" Algorithm="SHA256" HashEncoding="hex">
+      <Output TaskParameter="Items" ItemName="OlsExeHash" />
+    </GetFileHash>
+    <PropertyGroup>
+      <OlsActualHash>@(OlsExeHash->'%(FileHash)')</OlsActualHash>
+    </PropertyGroup>
+    <Error Condition="!$([System.String]::Equals('$(OlsActualHash)', '$(OlsPinnedHash)', System.StringComparison.OrdinalIgnoreCase))"
+           Text="The bundled ols.exe (SHA-256 $(OlsActualHash)) does not match the pin in src\OdinVS\ols\ols.pin ($(OlsPinnedHash)). If you replaced ols.exe on purpose, run scripts\bump-ols.ps1; otherwise restore the file." />
+  </Target>
 </Project>

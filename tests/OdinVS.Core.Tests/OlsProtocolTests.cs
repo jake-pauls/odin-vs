@@ -11,12 +11,10 @@ public sealed class OlsProtocolTests
     // tests are Inconclusive. Later this should come from the extension's settings or a test run parameter.
     private const string OdinPath = ToolResolver.OdinFallback;
 
-    private static string RepoRoot { get; } = FindRepoRoot();
-
-    private static string OlsPath => Path.Combine(RepoRoot, "src", "OdinVS", "ols", "ols.exe");
+    private static string OlsPath => Path.Combine(RepoPaths.BundledOlsDirectory, "ols.exe");
 
     private static string FixturePath(string kind) =>
-        Path.Combine(RepoRoot, "tests", "samples", "LanguageServer", kind, "main.odin");
+        Path.Combine(RepoPaths.Root, "tests", "samples", "LanguageServer", kind, "main.odin");
 
     [TestInitialize]
     public void RequireToolchain()
@@ -219,15 +217,4 @@ public sealed class OlsProtocolTests
             OlsConfig.Generate(new OlsSettings(OdinPath, [checkerPath], [])));
 
     private static string ToUri(string path) => new Uri(path).AbsoluteUri;
-
-    private static string FindRepoRoot()
-    {
-        DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "CLAUDE.md")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName ?? throw new InvalidOperationException("repo root not found");
-    }
 }

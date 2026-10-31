@@ -184,6 +184,7 @@ Rules: every Core change ships with a tier-1 test; every `Odin.targets` change s
 Build/test commands (record real ones here as they are established):
 - Build VSIX: VS MSBuild with `/restore` (see skill). Unit tests: `dotnet test tests/OdinVS.Core.Tests`.
 - Rebuild, reinstall into Exp and launch it on a sample: `scripts\exp-reinstall.ps1 [-Bump] [-OpenFile <path>]` (closes any running Exp, `-Bump` raises the manifest patch version). Known quirks are in `docs/pitfalls.md`.
+- Bundled ols is pinned: `src/OdinVS/ols/ols.pin` holds its version and SHA-256, the `VerifyBundledOls` target in `OdinVS.csproj` fails the build if `ols.exe` differs, and `BundledOlsPinTests` checks the same plus `BundledOls.Version`. Replace ols only with `scripts\bump-ols.ps1 [-Version dev-YYYY-MM]` (copies from the local Odin install, updates the pin, `BundledOls.cs` and `THIRD-PARTY-NOTICES.md`, runs the tier-2 tests).
 - Experimental instance: F5 from the host project. Verify installs in the instance, not by exit code.
 - Uninstall via Manage Extensions, not `VSIXInstaller /u`.
 
