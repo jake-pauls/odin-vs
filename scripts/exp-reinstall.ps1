@@ -1,14 +1,16 @@
 # Rebuilds the VSIX, reinstalls it into the Visual Studio Experimental instance and launches that instance on a file.
-# Usage: scripts\exp-reinstall.ps1 [-OpenFile <path>] [-Bump]
-#   -Bump   increments the patch part of the manifest version first (VS ignores a reinstall with an unchanged version)
+# Usage: scripts\exp-reinstall.ps1 [-OpenFile <path>] [-Bump] [-VsRoot <path>]
+#   -Bump    increments the patch part of the manifest version first (VS ignores a reinstall with an unchanged version)
+#   -VsRoot  the Visual Studio install to build with and install into (defaults to this machine's VS 2026 Community)
 param(
     [string] $OpenFile = 'tests\samples\LanguageServer\broken\main.odin',
-    [switch] $Bump
+    [switch] $Bump,
+    [string] $VsRoot = 'C:\Program Files\Microsoft Visual Studio\18\Community'
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$vs = 'C:\Program Files\Microsoft Visual Studio\18\Community'
+$vs = $VsRoot
 $devenv = Join-Path $vs 'Common7\IDE\devenv.exe'
 $manifest = Join-Path $repo 'src\OdinVS\source.extension.vsixmanifest'
 $vsix = Join-Path $repo 'src\OdinVS\bin\Debug\net472\OdinVS.vsix'

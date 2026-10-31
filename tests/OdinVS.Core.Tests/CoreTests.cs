@@ -15,7 +15,7 @@ public sealed class ToolLocatorTests
     [TestMethod]
     public void FallsBackWhenNotInSearchDirectories()
     {
-        ToolLocator locator = new(p => p == "fallback");
+        ToolLocator locator = new(p => p is "fallback");
         Assert.AreEqual("fallback", locator.Find("odin.exe", ["C:\\a", ""], ["fallback"]));
     }
 
@@ -48,30 +48,30 @@ public sealed class ToolLocatorTests
 public sealed class ToolResolverTests
 {
     private const string Extension = "C:\\ext";
-    private static readonly string Ols = Path.Combine(Extension, "ols", "ols.exe");
-    private static readonly string OdinOnPath = Path.Combine("C:\\tools", "odin.exe");
+    private static readonly string m_Ols = Path.Combine(Extension, "ols", "ols.exe");
+    private static readonly string m_OdinOnPath = Path.Combine("C:\\tools", "odin.exe");
 
     [TestMethod]
     public void ResolvesBothTools()
     {
-        ToolResolver resolver = new(new ToolLocator(p => p == Ols || p == OdinOnPath));
+        ToolResolver resolver = new(new ToolLocator(p => p == m_Ols || p == m_OdinOnPath));
         ResolvedTools tools = resolver.Resolve(Extension, "C:\\other;C:\\tools");
-        Assert.AreEqual(Ols, tools.Ols);
-        Assert.AreEqual(OdinOnPath, tools.Odin);
+        Assert.AreEqual(m_Ols, tools.Ols);
+        Assert.AreEqual(m_OdinOnPath, tools.Odin);
         Assert.IsEmpty(tools.Problems);
     }
 
     [TestMethod]
     public void FallsBackToTheDefaultOdinLocation()
     {
-        ToolResolver resolver = new(new ToolLocator(p => p == Ols || p == ToolResolver.OdinFallback));
+        ToolResolver resolver = new(new ToolLocator(p => p == m_Ols || p == ToolResolver.OdinFallback));
         Assert.AreEqual(ToolResolver.OdinFallback, resolver.Resolve(Extension, null).Odin);
     }
 
     [TestMethod]
     public void ReportsMissingOdin()
     {
-        ToolResolver resolver = new(new ToolLocator(p => p == Ols));
+        ToolResolver resolver = new(new ToolLocator(p => p == m_Ols));
         ResolvedTools tools = resolver.Resolve(Extension, "C:\\tools");
         Assert.IsNull(tools.Odin);
         Assert.HasCount(1, tools.Problems);
@@ -81,7 +81,7 @@ public sealed class ToolResolverTests
     [TestMethod]
     public void ReportsMissingOls()
     {
-        ToolResolver resolver = new(new ToolLocator(p => p == OdinOnPath));
+        ToolResolver resolver = new(new ToolLocator(p => p == m_OdinOnPath));
         ResolvedTools tools = resolver.Resolve(Extension, "C:\\tools");
         Assert.IsNull(tools.Ols);
         Assert.HasCount(1, tools.Problems);

@@ -12,7 +12,7 @@ internal sealed record StartedOls(Process Process, string OdinPath, OlsSettings 
 internal sealed class OlsProcess(Log log)
 {
     // Lives for the VS process; the OS closes the handle on exit, which kills ols. Null if the job could not be created.
-    private static readonly Lazy<KillOnCloseJob?> Job = new(CreateJob);
+    private static readonly Lazy<KillOnCloseJob?> m_Job = new(CreateJob);
 
     public StartedOls? Start()
     {
@@ -57,17 +57,17 @@ internal sealed class OlsProcess(Log log)
         }
         catch (Win32Exception ex)
         {
-            log.Write($"failed to start ols: {ex.Message}; language server disabled.");
+            log.Write($"failed to start ols: {ex.Message}; language server disabled. Check that ols.exe is not blocked (file Properties > Unblock) or quarantined by antivirus, then reopen the file.");
             return null;
         }
 
         try
         {
-            Job.Value?.Add(process);
+            m_Job.Value?.Add(process);
         }
         catch (InvalidOperationException ex)
         {
-            log.Write($"could not tie ols to the VS process lifetime: {ex.Message}");
+            log.Write($"could not tie ols to the VS process lifetime: {ex.Message}. ols still stops with the language client, but may be left running if VS crashes; end ols.exe in Task Manager if so.");
         }
 
         process.BeginErrorReadLine();
@@ -115,14 +115,9 @@ internal sealed class OlsProcess(Log log)
                 return output.ToString();
             }
         }
-        catch (Win32Exception ex)
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
-            log.Write($"could not run 'odin version': {ex.Message}");
-            return null;
-        }
-        catch (InvalidOperationException ex)
-        {
-            log.Write($"could not run 'odin version': {ex.Message}");
+            log.Write($"could not run 'odin version': {ex.Message}. The version-mismatch check was skipped; the language server still runs. Check that odin.exe starts from a terminal.");
             return null;
         }
     }
@@ -136,7 +131,7 @@ internal sealed class OlsProcess(Log log)
         }
         catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
         {
-            log.Write("ols exited");
+            log.Write($"ols exited (exit code unavailable: {ex.Message})");
         }
     }
 

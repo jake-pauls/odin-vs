@@ -13,7 +13,7 @@ internal static class OlsDiagnosticCode
         }
 
         string trimmed = code!.Trim();
-        return trimmed == Prefix || trimmed.StartsWith(Prefix + ".", StringComparison.Ordinal)
+        return trimmed is Prefix || trimmed.StartsWith(Prefix + ".", StringComparison.Ordinal)
             ? trimmed
             : $"{Prefix}.{trimmed}";
     }

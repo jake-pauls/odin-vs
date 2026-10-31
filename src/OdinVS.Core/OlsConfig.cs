@@ -23,11 +23,21 @@ internal static class OlsConfig
         {
             switch (c)
             {
-                case '"': quoted.Append("\\\""); break;
-                case '\\': quoted.Append("\\\\"); break;
-                case '\n': quoted.Append("\\n"); break;
-                case '\r': quoted.Append("\\r"); break;
-                case '\t': quoted.Append("\\t"); break;
+                case '"':
+                    quoted.Append("\\\"");
+                    break;
+                case '\\':
+                    quoted.Append("\\\\");
+                    break;
+                case '\n':
+                    quoted.Append("\\n");
+                    break;
+                case '\r':
+                    quoted.Append("\\r");
+                    break;
+                case '\t':
+                    quoted.Append("\\t");
+                    break;
                 default:
                     if (c < ' ')
                     {

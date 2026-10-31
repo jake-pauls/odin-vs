@@ -112,6 +112,20 @@ LSP servers normally own diagnostics and push them (`textDocument/publishDiagnos
 - No `async void`. If an event handler forces one, wrap the whole body in `try`/`catch`.
 - `internal` for anything not part of a public API. Exception: types VS requires to be public (packages, MEF/COM-visible types); note why in a one-line comment.
 - Primary constructors where an explicit constructor is not needed.
+- Private fields are prefixed `m_`, e.g. `m_MemberName` (instance and static; `const` stays PascalCase). Captured primary-constructor parameters are not members and keep their parameter name.
+- Properties are always PascalCase, e.g. `ExampleProperty`.
+- Prefer `is` / `is not` for null checks, type checks and comparisons with constants (`x is null`, `name is "ols"`); `==` stays for non-constant values.
+- Always use braces on `if`/`else`/loops, never single-line bodies:
+  ```
+  if (MyBooleanCondition)
+  {
+      MyLogic();
+  }
+  ```
+- In `switch`, put each statement of a case on its own line; never `case X: Do(); break;` on one line.
+- Native methods and their structs live in an `internal static class NativeMethods` (`src/OdinVS.LanguageServer/NativeMethods.cs`), not next to the code that calls them.
+- Strings that assume something about the local machine (an install path, a tool location) are a named `const` or a parameter with a default, defined once and reused; never repeated inline. Say in a comment what is assumed.
+- Never swallow an exception silently. At minimum log it with the exception text and, where there is one, what to do about it (what to check or change). Empty `catch` blocks are allowed only where logging is impossible or pointless, and then a comment says why: the logger itself failing, the expected end of a stream or `OperationCanceledException`, a best-effort cleanup whose failure changes nothing for the user. In `OdinVS.Core` (no logger) return the problem to the caller (e.g. `ResolvedTools.Problems`) instead of dropping it.
 - Never use `#region`.
 - Match the density and style of surrounding code; do not add comments that restate the code.
 

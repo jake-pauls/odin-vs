@@ -16,12 +16,12 @@ internal sealed class ToolResolver(ToolLocator locator)
         List<string> problems = [];
         if (ols is null)
         {
-            problems.Add($"ols.exe not found under {olsDirectory}");
+            problems.Add($"ols.exe not found under {olsDirectory}; reinstall the Odin extension, the bundled language server is missing");
         }
 
         if (odin is null)
         {
-            problems.Add($"odin.exe not found on PATH or at {OdinFallback}");
+            problems.Add($"odin.exe not found on PATH (relative or invalid PATH entries are ignored) or at {OdinFallback}; install Odin there or add its folder to PATH");
         }
 
         return new ResolvedTools(ols, odin, problems);

@@ -7,7 +7,9 @@ namespace OdinVS.Core.Tests;
 [TestCategory("RequiresToolchain")]
 public sealed class OlsProtocolTests
 {
-    private const string OdinPath = @"C:\Program Files\Odin\odin\dist\odin.exe";
+    // Assumes Odin is installed at the default location (the same path the extension falls back to). Without it these
+    // tests are Inconclusive. Later this should come from the extension's settings or a test run parameter.
+    private const string OdinPath = ToolResolver.OdinFallback;
 
     private static string RepoRoot { get; } = FindRepoRoot();
 
@@ -110,10 +112,10 @@ public sealed class OlsProtocolTests
         client.Request("initialize", InitializeParams(ToUri(workspace)), TimeSpan.FromSeconds(20));
         client.Notify("initialized", new JsonObject());
 
-        Assert.AreEqual(0, client.Shutdown());
+        Assert.AreEqual(0, client.Shutdown(), client.ShutdownProblem);
         // ols logs nothing on stderr; the version line arrives as a window/logMessage notification.
         string? versionLine = client.Notifications
-            .Where(n => n["method"]?.GetValue<string>() == "window/logMessage")
+            .Where(n => n["method"]?.GetValue<string>() is "window/logMessage")
             .Select(n => n["params"]?["message"]?.GetValue<string>())
             .FirstOrDefault(m => m is not null && m.Contains("Starting Odin Language Server"));
         Assert.IsNotNull(versionLine, "no startup logMessage; got: " + string.Join(" | ", client.Notifications.Select(n => n.ToJsonString())));
@@ -193,7 +195,7 @@ public sealed class OlsProtocolTests
             ["text"] = File.ReadAllText(file),
         });
 
-        return client.WaitForDiagnostics(TimeSpan.FromSeconds(kind == "broken" ? 30 : 8), requireNonEmpty: true);
+        return client.WaitForDiagnostics(TimeSpan.FromSeconds(kind is "broken" ? 30 : 8), requireNonEmpty: true);
     }
 
     private static JsonObject InitializeParams(string? rootUri, JsonNode? options = null) => new()

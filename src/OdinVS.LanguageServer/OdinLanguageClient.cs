@@ -15,14 +15,14 @@ namespace OdinVS.LanguageServer;
 [Export(typeof(ILanguageClient))]
 public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomMessage2
 {
-    private readonly Log log = Log.Default;
-    private readonly OlsProcess launcher;
-    private readonly object gate = new();
-    private StartedOls? started;
+    private readonly Log m_Log = Log.Default;
+    private readonly OlsProcess m_Launcher;
+    private readonly object m_Gate = new();
+    private StartedOls? m_Started;
 
     public OdinLanguageClient()
     {
-        launcher = new OlsProcess(log);
+        m_Launcher = new OlsProcess(m_Log);
         AppDomain.CurrentDomain.ProcessExit += (_, _) => StopProcess();
     }
 
@@ -31,7 +31,7 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
     public IEnumerable<string>? ConfigurationSections => null;
 
     // ols takes its config here (verified by the tier-2 tests); an ols.json is only found in the workspace root.
-    public object? InitializationOptions => started is null ? null : JToken.Parse(OlsConfig.Generate(started.Settings));
+    public object? InitializationOptions => m_Started is null ? null : JToken.Parse(OlsConfig.Generate(m_Started.Settings));
 
     public IEnumerable<string>? FilesToWatch => null;
 
@@ -54,10 +54,10 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
         await Task.Yield();
         StopProcess();
 
-        StartedOls? next = launcher.Start();
-        lock (gate)
+        StartedOls? next = m_Launcher.Start();
+        lock (m_Gate)
         {
-            started = next;
+            m_Started = next;
         }
 
         if (next is null)
@@ -72,19 +72,19 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
 
     public Task OnLoadedAsync()
     {
-        log.Write("OnLoadedAsync");
+        m_Log.Write("OnLoadedAsync");
         return StartAsync is null ? Task.CompletedTask : StartAsync.InvokeAsync(this, EventArgs.Empty);
     }
 
     public Task OnServerInitializedAsync()
     {
-        log.Write("OnServerInitializedAsync");
+        m_Log.Write("OnServerInitializedAsync");
         return Task.CompletedTask;
     }
 
     public Task<InitializationFailureContext?> OnServerInitializeFailedAsync(ILanguageClientInitializationInfo initializationState)
     {
-        log.Write($"OnServerInitializeFailedAsync: {initializationState.StatusMessage}");
+        m_Log.Write($"OnServerInitializeFailedAsync: {initializationState.StatusMessage}");
         StopProcess();
         return Task.FromResult<InitializationFailureContext?>(new InitializationFailureContext
         {
@@ -96,22 +96,22 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
     {
         try
         {
-            string? warning = VersionCompatibility.Check(launcher.ReadOdinVersion(odinPath), BundledOls.Version);
-            log.Write(warning is null ? $"bundled ols {BundledOls.Version} matches installed odin" : $"WARNING: {warning}");
+            string? warning = VersionCompatibility.Check(m_Launcher.ReadOdinVersion(odinPath), BundledOls.Version);
+            m_Log.Write(warning is null ? $"bundled ols {BundledOls.Version} matches installed odin" : $"WARNING: {warning}");
         }
         catch (Exception ex)
         {
-            log.Write($"version check failed: {ex.Message}");
+            m_Log.Write($"version check failed: {ex}. The check is informational; the language server still runs.");
         }
     }
 
     private void StopProcess()
     {
         Process? running;
-        lock (gate)
+        lock (m_Gate)
         {
-            running = started?.Process;
-            started = null;
+            running = m_Started?.Process;
+            m_Started = null;
         }
 
         if (running is null)
@@ -128,7 +128,7 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
         }
         catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
         {
-            log.Write($"could not stop ols: {ex.Message}");
+            m_Log.Write($"could not stop ols: {ex.Message}. If ols.exe is still running, end it in Task Manager.");
         }
         finally
         {

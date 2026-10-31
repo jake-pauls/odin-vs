@@ -2,7 +2,7 @@ namespace OdinVS.LanguageServer;
 
 internal sealed class Log(string path)
 {
-    private readonly object gate = new();
+    private readonly object m_Gate = new();
 
     public static string DataDirectory { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OdinVS");
@@ -13,7 +13,7 @@ internal sealed class Log(string path)
     {
         try
         {
-            lock (gate)
+            lock (m_Gate)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");

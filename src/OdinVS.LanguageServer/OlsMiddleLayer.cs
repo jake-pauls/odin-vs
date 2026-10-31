@@ -11,7 +11,7 @@ internal sealed class OlsMiddleLayer(Log log) : ILanguageClientMiddleLayer2<JTok
 {
     private const string PublishDiagnostics = "textDocument/publishDiagnostics";
 
-    public bool CanHandle(string methodName) => methodName == PublishDiagnostics;
+    public bool CanHandle(string methodName) => methodName is PublishDiagnostics;
 
     public Task HandleNotificationAsync(string methodName, JToken methodParam, Func<JToken, Task> sendNotification)
     {

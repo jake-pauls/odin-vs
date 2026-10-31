@@ -8,23 +8,26 @@ namespace OdinVS.Core.Tests;
 // Minimal Content-Length framed JSON-RPC client for talking to a real ols over stdio (tier-2 tests).
 internal sealed class OlsClient : IDisposable
 {
-    private readonly Process process;
-    private readonly List<string> stderr = [];
-    private readonly List<JsonNode> notifications = [];
-    private readonly System.Collections.Concurrent.BlockingCollection<JsonNode> frames = [];
-    private int nextId = 1;
+    private readonly Process m_Process;
+    private readonly List<string> m_Stderr = [];
+    private readonly List<JsonNode> m_Notifications = [];
+    private readonly System.Collections.Concurrent.BlockingCollection<JsonNode> m_Frames = [];
+    private int m_NextId = 1;
 
-    private OlsClient(Process process) => this.process = process;
+    private OlsClient(Process process) => m_Process = process;
 
-    public IReadOnlyList<JsonNode> Notifications => notifications;
+    public IReadOnlyList<JsonNode> Notifications => m_Notifications;
+
+    // Why the last Shutdown() did not complete cleanly, with a hint; null if it did. Include it in assertion messages.
+    public string? ShutdownProblem { get; private set; }
 
     public IReadOnlyList<string> Stderr
     {
         get
         {
-            lock (stderr)
+            lock (m_Stderr)
             {
-                return [.. stderr];
+                return [.. m_Stderr];
             }
         }
     }
@@ -49,9 +52,9 @@ internal sealed class OlsClient : IDisposable
         {
             if (e.Data is not null)
             {
-                lock (client.stderr)
+                lock (client.m_Stderr)
                 {
-                    client.stderr.Add(e.Data);
+                    client.m_Stderr.Add(e.Data);
                 }
             }
         };
@@ -63,18 +66,20 @@ internal sealed class OlsClient : IDisposable
             {
                 while (true)
                 {
-                    client.frames.Add(client.ReadFrame());
+                    client.m_Frames.Add(client.ReadFrame());
                 }
             }
             catch (IOException)
             {
+                // Expected end of the stream: ols exited or closed stdout. Read() reports it to the test as an IOException.
             }
             catch (ObjectDisposedException)
             {
+                // Expected when the test disposes the client while this thread is still blocked on a read.
             }
             finally
             {
-                client.frames.CompleteAdding();
+                client.m_Frames.CompleteAdding();
             }
         });
         return client;
@@ -82,7 +87,7 @@ internal sealed class OlsClient : IDisposable
 
     public JsonNode Request(string method, JsonNode? parameters, TimeSpan timeout)
     {
-        int id = nextId++;
+        int id = m_NextId++;
         Send(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id, ["method"] = method, ["params"] = parameters });
         DateTime deadline = DateTime.UtcNow + timeout;
         while (true)
@@ -104,7 +109,7 @@ internal sealed class OlsClient : IDisposable
     public JsonNode? WaitForDiagnostics(TimeSpan timeout, bool requireNonEmpty)
     {
         DateTime deadline = DateTime.UtcNow + timeout;
-        foreach (JsonNode held in notifications)
+        foreach (JsonNode held in m_Notifications)
         {
             if (Matches(held, requireNonEmpty))
             {
@@ -136,6 +141,7 @@ internal sealed class OlsClient : IDisposable
 
     public int Shutdown()
     {
+        ShutdownProblem = null;
         try
         {
             Request("shutdown", null, TimeSpan.FromSeconds(5));
@@ -143,37 +149,39 @@ internal sealed class OlsClient : IDisposable
         }
         catch (Exception ex) when (ex is IOException or TimeoutException)
         {
+            ShutdownProblem = $"ols did not complete shutdown/exit ({ex.GetType().Name}: {ex.Message}). It probably crashed or hung; check Stderr and the window/logMessage notifications.";
         }
 
-        if (!process.WaitForExit(5000))
+        if (!m_Process.WaitForExit(5000))
         {
-            process.Kill();
-            process.WaitForExit();
+            m_Process.Kill();
+            m_Process.WaitForExit();
+            ShutdownProblem ??= "ols did not exit within 5 seconds of the exit notification and was killed.";
             return -1;
         }
 
-        return process.ExitCode;
+        return m_Process.ExitCode;
     }
 
     public void Dispose()
     {
-        if (!process.HasExited)
+        if (!m_Process.HasExited)
         {
-            process.Kill();
+            m_Process.Kill();
         }
 
-        process.Dispose();
+        m_Process.Dispose();
     }
 
     private static bool Matches(JsonNode message, bool requireNonEmpty) =>
-        message["method"]?.GetValue<string>() == "textDocument/publishDiagnostics"
+        message["method"]?.GetValue<string>() is "textDocument/publishDiagnostics"
         && (!requireNonEmpty || message["params"]?["diagnostics"]?.AsArray().Count > 0);
 
     private void Remember(JsonNode message)
     {
         if (message["method"] is not null)
         {
-            notifications.Add(message);
+            m_Notifications.Add(message);
             // Answer server-to-client requests (e.g. window/workDoneProgress/create) so ols does not block.
             if (message["id"] is JsonNode id)
             {
@@ -186,7 +194,7 @@ internal sealed class OlsClient : IDisposable
     {
         byte[] body = Encoding.UTF8.GetBytes(message.ToJsonString());
         byte[] header = Encoding.ASCII.GetBytes($"Content-Length: {body.Length}\r\n\r\n");
-        Stream stdin = process.StandardInput.BaseStream;
+        Stream stdin = m_Process.StandardInput.BaseStream;
         stdin.Write(header);
         stdin.Write(body);
         stdin.Flush();
@@ -201,7 +209,7 @@ internal sealed class OlsClient : IDisposable
 
         try
         {
-            if (frames.TryTake(out JsonNode? frame, timeout))
+            if (m_Frames.TryTake(out JsonNode? frame, timeout))
             {
                 return frame;
             }
@@ -216,7 +224,7 @@ internal sealed class OlsClient : IDisposable
 
     private JsonNode ReadFrame()
     {
-        Stream stdout = process.StandardOutput.BaseStream;
+        Stream stdout = m_Process.StandardOutput.BaseStream;
         int length = 0;
         while (true)
         {
@@ -259,7 +267,7 @@ internal sealed class OlsClient : IDisposable
                 throw new IOException("ols closed stdout.");
             }
 
-            if (b == '\n')
+            if (b is '\n')
             {
                 return line.ToString().TrimEnd('\r');
             }
