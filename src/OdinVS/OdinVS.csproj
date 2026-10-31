@@ -17,7 +17,19 @@
     <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="18.9.820" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\OdinVS.LanguageServer\OdinVS.LanguageServer.csproj" />
+    <ProjectReference Include="..\OdinVS.Core\OdinVS.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="source.extension.vsixmanifest" />
+    <Content Include="ols\ols.exe">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>ols\</VSIXSubPath>
+    </Content>
+    <Content Include="ols\builtin\*.odin">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>ols\builtin\</VSIXSubPath>
+    </Content>
     <Content Include="odin.pkgdef">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

@@ -57,7 +57,7 @@ Decided 2026-10-30 (user): use the ols grammar, pinned to a commit so updates an
 - [ ] Proc-level folding / "Collapse to Definitions" and `#region` (see the folding result above; candidate: LSP `foldingRange` in M2).
 
 ### M2 Language server
-- [ ] ols launches from the VSIX, stdio piped, stopped cleanly on VS exit.
+- [ ] ols launches from the VSIX, stdio piped, stopped cleanly on VS exit. *Progress (2026-10-30, branch `m2/language-client`, VSIX 0.2.0):* verified in Exp 18.11: opening `tests/samples/LanguageServer/broken/main.odin` launched the bundled `ols.exe` from the extension folder (`OnLoadedAsync`, `ols started`, `OnServerInitializedAsync` in `%LOCALAPPDATA%\OdinVS\odinvs.log`, pid seen in Task Manager list). **Not yet verified:** clean stop on VS exit; squiggles/Error List (Save of an unmodified buffer sent no diagnostics, and the automation cannot type); where ols reads `ols.json` (it was written to `%LOCALAPPDATA%\OdinVS\ols\` and used as ols's working directory, unconfirmed); ols stderr (the version line) never reached our log, so the version check has not fired. Exp ran on a stale `Odin.language.cache` (the delete was denied), so colour results from this run are not valid evidence.
 - [ ] Broken fixtures produce squiggles and Error List entries; fixing them clears both.
 - [ ] Completion, go-to-definition, hover checked and results recorded (including which do not work).
 - [ ] (carried from M1) Proc-level folding / "Collapse to Definitions": check whether ols offers `foldingRange` and whether the VS language client uses it; record the result.
