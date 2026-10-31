@@ -141,7 +141,8 @@ main
 7. Milestone checklist ticks are proposals until the user merges the PR; say so in the PR description.
 8. Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. The repo-local identity is `jake-pauls <jakepauls99@gmail.com>`.
 9. Pushing: verify `git remote get-url origin` matches `git@github.com:jake-pauls/` first. Git Bash cannot see the Windows ssh-agent, so push from PowerShell with `$env:GIT_SSH_COMMAND = 'C:/Windows/System32/OpenSSH/ssh.exe'`.
-10. **Decided:** all spike code goes under `spikes/<name>/` on its task branch, never into `src/` or `tests/` (the scratchpad is session-local and unreviewable); promote real pieces (e.g. `OlsClient` into `OdinVS.Core.Tests`) in later tasks.
+10. **Review before the PR:** when the user says "review", "review and open a PR" or similar, follow `.claude/skills/review-branch/SKILL.md` (also `/review-branch`): agent review, fix trivial findings, ask about the rest, then open the PR with a "please check" list.
+11. **Decided:** all spike code goes under `spikes/<name>/` on its task branch, never into `src/` or `tests/` (the scratchpad is session-local and unreviewable); promote real pieces (e.g. `OlsClient` into `OdinVS.Core.Tests`) in later tasks.
 
 ## Architecture additions
 ```
