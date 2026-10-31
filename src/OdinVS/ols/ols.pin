@@ -1,0 +1,4 @@
+# Pinned bundled ols. The build and the unit tests fail if ols.exe no longer matches this file.
+# Change it only with scripts/bump-ols.ps1, which updates the version, hash, BundledOls.cs and THIRD-PARTY-NOTICES.md together.
+version=dev-2026-10
+sha256=01ee56f9b67f1fa772a5708e763c92f3d99750e21a1deaecc5ccf2e1cd849f95

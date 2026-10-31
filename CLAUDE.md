@@ -112,6 +112,20 @@ LSP servers normally own diagnostics and push them (`textDocument/publishDiagnos
 - No `async void`. If an event handler forces one, wrap the whole body in `try`/`catch`.
 - `internal` for anything not part of a public API. Exception: types VS requires to be public (packages, MEF/COM-visible types); note why in a one-line comment.
 - Primary constructors where an explicit constructor is not needed.
+- Private fields are prefixed `m_`, e.g. `m_MemberName` (instance and static; `const` stays PascalCase). Captured primary-constructor parameters are not members and keep their parameter name.
+- Properties are always PascalCase, e.g. `ExampleProperty`.
+- Prefer `is` / `is not` for null checks, type checks and comparisons with constants (`x is null`, `name is "ols"`); `==` stays for non-constant values.
+- Always use braces on `if`/`else`/loops, never single-line bodies:
+  ```
+  if (MyBooleanCondition)
+  {
+      MyLogic();
+  }
+  ```
+- In `switch`, put each statement of a case on its own line; never `case X: Do(); break;` on one line.
+- Native methods and their structs live in an `internal static class NativeMethods` (`src/OdinVS.LanguageServer/NativeMethods.cs`), not next to the code that calls them.
+- Strings that assume something about the local machine (an install path, a tool location) are a named `const` or a parameter with a default, defined once and reused; never repeated inline. Say in a comment what is assumed.
+- Never swallow an exception silently. At minimum log it with the exception text and, where there is one, what to do about it (what to check or change). Empty `catch` blocks are allowed only where logging is impossible or pointless, and then a comment says why: the logger itself failing, the expected end of a stream or `OperationCanceledException`, a best-effort cleanup whose failure changes nothing for the user. In `OdinVS.Core` (no logger) return the problem to the caller (e.g. `ResolvedTools.Problems`) instead of dropping it.
 - Never use `#region`.
 - Match the density and style of surrounding code; do not add comments that restate the code.
 
@@ -141,7 +155,8 @@ main
 7. Milestone checklist ticks are proposals until the user merges the PR; say so in the PR description.
 8. Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. The repo-local identity is `jake-pauls <jakepauls99@gmail.com>`.
 9. Pushing: verify `git remote get-url origin` matches `git@github.com:jake-pauls/` first. Git Bash cannot see the Windows ssh-agent, so push from PowerShell with `$env:GIT_SSH_COMMAND = 'C:/Windows/System32/OpenSSH/ssh.exe'`.
-10. **Decided:** all spike code goes under `spikes/<name>/` on its task branch, never into `src/` or `tests/` (the scratchpad is session-local and unreviewable); promote real pieces (e.g. `OlsClient` into `OdinVS.Core.Tests`) in later tasks.
+10. **Review before the PR:** when the user says "review", "review and open a PR" or similar, follow `.claude/skills/review-branch/SKILL.md` (also `/review-branch`): agent review, fix trivial findings, ask about the rest, then open the PR with a "please check" list.
+11. **Decided:** all spike code goes under `spikes/<name>/` on its task branch, never into `src/` or `tests/` (the scratchpad is session-local and unreviewable); promote real pieces (e.g. `OlsClient` into `OdinVS.Core.Tests`) in later tasks.
 
 ## Architecture additions
 ```
@@ -168,6 +183,8 @@ Rules: every Core change ships with a tier-1 test; every `Odin.targets` change s
 
 Build/test commands (record real ones here as they are established):
 - Build VSIX: VS MSBuild with `/restore` (see skill). Unit tests: `dotnet test tests/OdinVS.Core.Tests`.
+- Rebuild, reinstall into Exp and launch it on a sample: `scripts\exp-reinstall.ps1 [-Bump] [-OpenFile <path>]` (closes any running Exp, `-Bump` raises the manifest patch version). Known quirks are in `docs/pitfalls.md`.
+- Bundled ols is pinned: `src/OdinVS/ols/ols.pin` holds its version and SHA-256, the `VerifyBundledOls` target in `OdinVS.csproj` fails the build if `ols.exe` differs, and `BundledOlsPinTests` checks the same plus `BundledOls.Version`. Replace ols only with `scripts\bump-ols.ps1 [-Version dev-YYYY-MM]` (copies from the local Odin install, updates the pin, `BundledOls.cs` and `THIRD-PARTY-NOTICES.md`, runs the tier-2 tests).
 - Experimental instance: F5 from the host project. Verify installs in the instance, not by exit code.
 - Uninstall via Manage Extensions, not `VSIXInstaller /u`.
 

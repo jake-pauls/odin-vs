@@ -2,6 +2,12 @@
 
 odin-vs includes the following third-party material. It is also shipped inside the VSIX.
 
+## Odin Language Server (ols), bundled binary
+- Files: `src/OdinVS/ols/ols.exe` and `src/OdinVS/ols/builtin/builtin.odin`, `src/OdinVS/ols/builtin/intrinsics.odin`, unmodified. They are shipped in the VSIX under `ols\` and started by the extension as the language server.
+- Source: https://github.com/DanielGavin/ols. The files were copied from the local install at `C:\Program Files\Odin\ols\` (`ols-x86_64-pc-windows-msvc.exe`, renamed to `ols.exe`), which reports `dev-2026-10` (see `BundledOls.Version`). The upstream commit it was built from is not recorded; it was not looked up.
+- SHA-256: `ols.exe` `01ee56f9b67f1fa772a5708e763c92f3d99750e21a1deaecc5ccf2e1cd849f95`; `builtin.odin` `12cd885b0334c568960372dc88bd7b0f875defda71c55239284306fd999c58f4`; `intrinsics.odin` `f0bb8c90c7f27769b230e08c859d25492bee6ef3e3371cc38f76ae9d712126b1`. The pinned hash and version live in `src/OdinVS/ols/ols.pin`, which the build and the unit tests check; update all of them with `scripts/bump-ols.ps1` whenever the bundled files change.
+- License: MIT, Copyright (c) 2021 Daniel Gavin (text under "ols (Daniel Gavin)" below).
+
 ## Odin TextMate grammar
 
 - File: `src/OdinVS/Grammars/odin.tmLanguage.json`. Modified by odin-vs: one block added (`"fileTypes": ["odin"],` between `// ODIN-VS(START)` and `// ODIN-VS(END)` comment lines) so Visual Studio associates the grammar with `.odin` files; see `src/OdinVS/Grammars/README.md`.

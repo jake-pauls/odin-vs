@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="4.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OdinVS.Core\OdinVS.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Resolved by MSBuild on each machine and stamped into the assembly; RepoPaths reads it back. -->
+    <AssemblyMetadata Include="RepoRoot" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..'))" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+</Project>
