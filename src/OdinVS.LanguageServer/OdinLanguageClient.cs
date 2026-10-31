@@ -3,6 +3,8 @@ using System.Diagnostics;
 using Microsoft.VisualStudio.LanguageServer.Client;
 using Microsoft.VisualStudio.Threading;
 using Microsoft.VisualStudio.Utilities;
+using Newtonsoft.Json.Linq;
+using OdinVS.Core;
 using Task = System.Threading.Tasks.Task;
 
 namespace OdinVS.LanguageServer;
@@ -13,13 +15,17 @@ namespace OdinVS.LanguageServer;
 public sealed class OdinLanguageClient : ILanguageClient
 {
     private readonly Log log = Log.Default;
-    private Process? process;
+    private readonly OlsProcess launcher;
+    private StartedOls? started;
+
+    public OdinLanguageClient() => launcher = new OlsProcess(log);
 
     public string Name => "Odin Language Server";
 
     public IEnumerable<string>? ConfigurationSections => null;
 
-    public object? InitializationOptions => null;
+    // ols takes its config here (verified by the tier-2 tests); an ols.json is only found in the workspace root.
+    public object? InitializationOptions => started is null ? null : JToken.Parse(OlsConfig.Generate(started.Settings));
 
     public IEnumerable<string>? FilesToWatch => null;
 
@@ -36,14 +42,16 @@ public sealed class OdinLanguageClient : ILanguageClient
         await Task.Yield();
         StopProcess();
 
-        process = new OlsProcess(log).Start();
-        if (process is null)
+        started = launcher.Start();
+        if (started is null)
         {
             return null;
         }
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) => StopProcess();
-        return new Connection(process.StandardOutput.BaseStream, process.StandardInput.BaseStream);
+        string odinPath = started.OdinPath;
+        _ = Task.Run(() => CheckVersions(odinPath), token);
+        return new Connection(started.Process.StandardOutput.BaseStream, started.Process.StandardInput.BaseStream);
     }
 
     public Task OnLoadedAsync()
@@ -68,10 +76,16 @@ public sealed class OdinLanguageClient : ILanguageClient
         });
     }
 
+    private void CheckVersions(string odinPath)
+    {
+        string? warning = VersionCompatibility.Check(launcher.ReadOdinVersion(odinPath), BundledOls.Version);
+        log.Write(warning is null ? $"bundled ols {BundledOls.Version} matches installed odin" : $"WARNING: {warning}");
+    }
+
     private void StopProcess()
     {
-        Process? running = process;
-        process = null;
+        Process? running = started?.Process;
+        started = null;
         if (running is null)
         {
             return;

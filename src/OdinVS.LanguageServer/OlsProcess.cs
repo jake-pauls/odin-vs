@@ -4,12 +4,17 @@ using OdinVS.Core;
 
 namespace OdinVS.LanguageServer;
 
-// Resolves odin and ols, writes ols.json and starts ols with stdio piped. Returns null (after logging) when it cannot.
+internal sealed record StartedOls(Process Process, string OdinPath, OlsSettings Settings);
+
+// Resolves odin and ols and starts ols with stdio piped. Returns null (after logging) when it cannot.
 internal sealed class OlsProcess(Log log)
 {
+    // Lives for the VS process; the OS closes the handle on exit, which kills ols.
+    private static readonly KillOnCloseJob Job = new();
+
     private const string OdinFallback = @"C:\Program Files\Odin\odin\dist\odin.exe";
 
-    public Process? Start()
+    public StartedOls? Start()
     {
         string extensionDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
         ToolLocator locator = new(File.Exists);
@@ -29,14 +34,9 @@ internal sealed class OlsProcess(Log log)
             return null;
         }
 
-        string configDirectory = Path.Combine(Log.DataDirectory, "ols");
-        Directory.CreateDirectory(configDirectory);
-        OlsSettings settings = new(odin, [], []);
-        File.WriteAllText(Path.Combine(configDirectory, "ols.json"), OlsConfig.Generate(settings));
-
         ProcessStartInfo startInfo = new(ols)
         {
-            WorkingDirectory = configDirectory,
+            WorkingDirectory = Path.GetDirectoryName(ols)!,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardInput = true,
@@ -45,7 +45,13 @@ internal sealed class OlsProcess(Log log)
         };
 
         Process process = new() { StartInfo = startInfo, EnableRaisingEvents = true };
-        process.ErrorDataReceived += (_, e) => OnStderrLine(e.Data, odin);
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is not null)
+            {
+                log.Write($"ols stderr: {e.Data}");
+            }
+        };
         process.Exited += (_, _) => log.Write($"ols exited with code {process.ExitCode}");
 
         try
@@ -58,30 +64,23 @@ internal sealed class OlsProcess(Log log)
             return null;
         }
 
+        try
+        {
+            Job.Add(process);
+        }
+        catch (InvalidOperationException ex)
+        {
+            log.Write($"could not tie ols to the VS process lifetime: {ex.Message}");
+        }
+
         process.BeginErrorReadLine();
         log.Write($"ols started (pid {process.Id}) from {ols} using odin {odin}");
-        return process;
+
+        // Defaults for now; a later milestone fills these from .odinproj properties.
+        return new StartedOls(process, odin, new OlsSettings(odin, [], []));
     }
 
-    private void OnStderrLine(string? line, string odin)
-    {
-        if (line is null)
-        {
-            return;
-        }
-
-        log.Write($"ols: {line}");
-        if (line.Contains("Starting Odin Language Server"))
-        {
-            string? warning = VersionCompatibility.Check(ReadOdinVersion(odin), line);
-            if (warning is not null)
-            {
-                log.Write($"WARNING: {warning}");
-            }
-        }
-    }
-
-    private string? ReadOdinVersion(string odin)
+    public string? ReadOdinVersion(string odin)
     {
         try
         {

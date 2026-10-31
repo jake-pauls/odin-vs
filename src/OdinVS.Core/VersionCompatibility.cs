@@ -3,17 +3,16 @@ namespace OdinVS.Core;
 internal static class VersionCompatibility
 {
     // Null when the versions match; otherwise a warning to log.
-    public static string? Check(string? odinVersionText, string? olsVersionText)
+    public static string? Check(string? odinVersionText, OdinVersion olsVersion)
     {
         OdinVersion? odin = OdinVersion.Parse(odinVersionText);
-        OdinVersion? ols = OdinVersion.Parse(olsVersionText);
-        if (odin is null || ols is null)
+        if (odin is null)
         {
-            return $"Could not determine Odin ('{odinVersionText}') or ols ('{olsVersionText}') version; skipping compatibility check.";
+            return $"Could not determine the installed Odin version ('{odinVersionText}'); skipping compatibility check.";
         }
 
-        return odin == ols
+        return odin == olsVersion
             ? null
-            : $"ols {ols} does not match odin {odin}; completion and diagnostics may be wrong. Use an ols built for the installed Odin.";
+            : $"Bundled ols {olsVersion} does not match installed odin {odin}; completion and diagnostics may be wrong.";
     }
 }
