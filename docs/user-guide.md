@@ -28,7 +28,7 @@ What you get today: `.odin` syntax colorization, language-server diagnostics on 
 A project uses the `Odin.Sdk` MSBuild SDK and lists its own source files:
 
 ```xml
-<Project Sdk="Odin.Sdk/0.3.2-local">
+<Project Sdk="Odin.Sdk/0.3.3-local">
   <ItemGroup>
     <OdinCompile Include="src\**\*.odin" />
   </ItemGroup>
@@ -53,21 +53,35 @@ msbuild MyProject.odinproj /restore /t:Rebuild /p:Configuration=Release
 </configuration>
 ```
 
-`tests/samples/nuget.config` is a working example. Output goes to `bin\<Configuration>\<ProjectName>.exe`. Debug builds add `-debug` and produce a `.pdb`; Release builds do not.
+`tests/samples/nuget.config` is a working example.
+
+Output goes to `bin\<Configuration>\<ProjectName>.exe` unless overridden; see [Project properties and items](#project-properties-and-items). Debug builds add `-debug` and produce a `.pdb`; Release builds do not.
+
+## Project properties and items
+
+Everything an `.odinproj` can set, with its default. Properties are plain MSBuild properties: set them in the project's own `PropertyGroup` to override the default. Compiler options are deliberately not modelled as properties; pass any `odin` flag through `OdinExtraArgs`. **This list is kept current: it is updated whenever a project property or item is added or wrapped.**
 
 | Property | Default | Meaning |
 |---|---|---|
+| `Configurations` | `Debug;Release` | Configurations the project declares (see [Configurations](#configurations) for Visual Studio) |
+| `Platforms` | `x64` | Platforms the project declares; only x64 is supported |
+| `Configuration` | `Debug` | The configuration to build when none is passed (`/p:Configuration=...`) |
+| `Platform` | `x64` | The platform to build |
 | `OdinExe` | empty (search `PATH`, then `C:\Program Files\Odin\odin\dist\odin.exe`) | Path to `odin.exe` |
 | `OdinPackageDir` | `src` | Directory passed to `odin build` (relative to the project, or absolute) |
-| `OdinExtraArgs` | empty | Extra arguments appended to the `odin build` command; **the place for any `odin` compiler option** (`-o:speed`, `-define:X=1`, `-vet`) |
-| `OdinDebug` | `true` in Debug, `false` otherwise | Adds `-debug` (and produces the `.pdb`). A default you can override per project, e.g. `<OdinDebug>true</OdinDebug>` in a Profile configuration |
+| `OdinExtraArgs` | empty | Extra arguments appended to the `odin build` command: the place for any `odin` compiler option (`-o:speed`, `-define:X=1`, `-vet`) |
+| `OdinDebug` | `true` in Debug, `false` otherwise | Adds `-debug` (and produces the `.pdb`). A default you can override, e.g. `<OdinDebug>true</OdinDebug>` for a Profile configuration |
 | `OutDir` | `bin\<Configuration>\` | Output directory (relative to the project, or absolute) |
 | `TargetName` | project name | Output file name without extension |
-| `TargetPath` | `<OutDir><TargetName>.exe` | Full output path |
-| `Configurations` | `Debug;Release` | Configurations the project declares |
-| `Platforms` / `Platform` | `x64` | Only x64 is supported |
+| `TargetPath` | `<OutDir><TargetName>.exe` | Full output path (relative to the project, or absolute); the `.pdb` is written next to it with the same name |
 
-Project-level settings (names, paths, configurations) are plain MSBuild properties with defaults, so a `.odinproj` overrides them by setting them in its own `PropertyGroup`. Compiler options are not modelled as properties: pass them through `OdinExtraArgs`. Incremental builds look at the `OdinCompile` files and the `.odinproj`, so changing a property only with `/p:` on the command line does not trigger a rebuild; use the Rebuild target.
+| Item | Purpose |
+|---|---|
+| `OdinCompile` | The project's own source files, e.g. `<OdinCompile Include="src\**\*.odin" />`. The SDK adds none; the `.odinproj` lists them. Changing one rebuilds |
+| `OdinCollection` | An `-collection:name=path` passed to `odin`: `<OdinCollection Include="name"><Path>dir</Path></OdinCollection>` |
+| `ProjectConfiguration` | Declares a configuration to Visual Studio; see [Configurations](#configurations) |
+
+Incremental builds look at the `OdinCompile` files and the `.odinproj`, so changing a property only with `/p:` on the command line does not trigger a rebuild; use the Rebuild target.
 
 ## Configurations
 

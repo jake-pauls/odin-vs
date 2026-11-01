@@ -39,7 +39,9 @@
     <OutDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(OutDir)'))</OutDir>
     <TargetName Condition="'$(TargetName)' == ''">$(MSBuildProjectName)</TargetName>
     <TargetPath Condition="'$(TargetPath)' == ''">$(OutDir)$(TargetName).exe</TargetPath>
-    <OdinPdbPath Condition="'$(OdinPdbPath)' == ''">$(OutDir)$(TargetName).pdb</OdinPdbPath>
+    <TargetPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(TargetPath)'))</TargetPath>
+    <!-- odin writes the PDB next to -out: with the same name, so it follows TargetPath and is not a separate setting. -->
+    <_OdinPdbPath>$([System.IO.Path]::ChangeExtension('$(TargetPath)', '.pdb'))</_OdinPdbPath>
     <!-- Default: -debug (emits the PDB, implies -o:none) only for the Debug configuration. Set OdinDebug in the .odinproj to change it. -->
     <OdinDebug Condition="'$(OdinDebug)' == '' and '$(Configuration)' == 'Debug'">true</OdinDebug>
     <OdinDebug Condition="'$(OdinDebug)' == ''">false</OdinDebug>
@@ -53,13 +55,13 @@
 
   <!-- A -debug build also produces a PDB, so a missing PDB must trigger a rebuild. -->
   <ItemGroup>
-    <_OdinPdbOutput Include="$(OdinPdbPath)" Condition="'$(OdinDebug)' == 'true'" />
+    <_OdinPdbOutput Include="$(_OdinPdbPath)" Condition="'$(OdinDebug)' == 'true'" />
   </ItemGroup>
 
   <!-- Inputs are the project's own file list plus the project file (a flag change in the .odinproj must rebuild; a /p: override does not).
        Files reached through collections are not tracked yet; that comes with references (M6). -->
   <Target Name="Build" Inputs="@(OdinCompile);$(MSBuildProjectFullPath)" Outputs="$(TargetPath);@(_OdinPdbOutput)">
-    <MakeDir Directories="$(OutDir)" />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))" />
     <OdinBuild OdinExe="$(OdinExe)"
                PackageDirectory="$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(OdinPackageDir)'))"
                OutputPath="$(TargetPath)"
@@ -69,7 +71,7 @@
   </Target>
 
   <Target Name="Clean">
-    <Delete Files="$(TargetPath);$(OdinPdbPath)" />
+    <Delete Files="$(TargetPath);$(_OdinPdbPath)" />
   </Target>
 
   <Target Name="Rebuild" DependsOnTargets="Clean;Build" />

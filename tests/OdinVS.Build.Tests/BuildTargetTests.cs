@@ -70,11 +70,12 @@ public sealed class BuildTargetTests
     {
         (string project, MsBuildResult build) = BuildSample("HelloOdin");
         Assert.AreEqual(0, build.ExitCode, build.Output);
-        File.SetLastWriteTimeUtc(Exe(project, "Debug"), new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         MsBuildResult rebuild = MsBuildSandbox.Instance.Build(project, "HelloOdin.odinproj", "Rebuild");
         Assert.AreEqual(0, rebuild.ExitCode, rebuild.Output);
-        Assert.IsGreaterThan(new DateTime(2000, 1, 1), File.GetLastWriteTime(Exe(project, "Debug")));
-        Assert.IsTrue(File.Exists(Exe(project, "Debug", "pdb")));
+        // An up-to-date project would skip Build, so odin running again proves Clean removed the outputs first.
+        StringAssert.Contains(rebuild.Output, "ODIN: ");
+        Assert.IsTrue(File.Exists(Exe(project, "Debug")), rebuild.Output);
+        Assert.IsTrue(File.Exists(Exe(project, "Debug", "pdb")), rebuild.Output);
     }
 
     [TestMethod]
@@ -196,6 +197,20 @@ public sealed class BuildTargetTests
         Assert.AreEqual(0, result.ExitCode, result.Output);
         Assert.IsTrue(File.Exists(Path.Combine(directory, "out", "renamed.exe")), result.Output);
         Assert.IsTrue(File.Exists(Path.Combine(directory, "out", "renamed.pdb")), "the PDB must follow the target name");
+    }
+
+    [TestMethod]
+    public void TargetPathInAnotherFolderGetsItsPdbThereAndStaysUpToDate()
+    {
+        string directory = CopySampleWith("HelloOdin", @"<PropertyGroup><TargetPath>artifacts\bin\app.exe</TargetPath></PropertyGroup>");
+        MsBuildResult first = MsBuildSandbox.Instance.Build(directory, "HelloOdin.odinproj", "Build");
+        Assert.AreEqual(0, first.ExitCode, first.Output);
+        Assert.IsTrue(File.Exists(Path.Combine(directory, "artifacts", "bin", "app.exe")), first.Output);
+        Assert.IsTrue(File.Exists(Path.Combine(directory, "artifacts", "bin", "app.pdb")), "the PDB must follow TargetPath");
+
+        MsBuildResult second = MsBuildSandbox.Instance.Build(directory, "HelloOdin.odinproj", "Build");
+        Assert.AreEqual(0, second.ExitCode, second.Output);
+        Assert.DoesNotContain("ODIN: ", second.Output);
     }
 
     [TestMethod]

@@ -7,4 +7,4 @@ This package is a private development build of the odin-vs MSBuild SDK.
 - The `-local` version suffix marks it as unreleased. Publishing is a decision for the repository owner, made explicitly and later.
 
 Use it from a folder feed: a `nuget.config` with `<clear />` and one source pointing at the `nuget/` directory, then
-`<Project Sdk="Odin.Sdk/0.3.2-local">` in the `.odinproj`.
+`<Project Sdk="Odin.Sdk/0.3.3-local">` in the `.odinproj`.

@@ -63,6 +63,18 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
             return false;
         }
 
+        bool cancelled;
+        lock (m_Lock)
+        {
+            cancelled = m_Cancelled;
+        }
+
+        if (cancelled)
+        {
+            // The killed odin exits non-zero with no error list; report nothing so the cancel does not look like a build failure.
+            return false;
+        }
+
         if (stdout.Trim().Length > 0)
         {
             Log.LogMessage(MessageImportance.Normal, "{0}", stdout.Trim());
@@ -121,20 +133,38 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
         return odin;
     }
 
-    // Called by MSBuild when the build is cancelled (Cancel Build in VS, Ctrl+C). Kills odin; its child processes (the linker) are not tracked.
+    // Called by MSBuild when the build is cancelled (Cancel Build in VS, Ctrl+C).
     public void Cancel()
     {
         lock (m_Lock)
         {
             m_Cancelled = true;
-            try
+            if (m_Process is not null)
             {
-                m_Process?.Kill();
+                KillProcessTree(m_Process);
             }
-            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        }
+    }
+
+    // Kills odin and the processes it started, using `taskkill /T`. Process.Kill() would only kill odin: its linker child inherits
+    // our stdout/stderr pipes, so it would keep running and keep the pipes open, and ReadToEnd in Run would block until the link
+    // finished. Process.Kill(entireProcessTree: true) does not exist on net472/netstandard2.0, and a job object is far more code for
+    // the same result, so we call the Windows tool that is always present.
+    private static void KillProcessTree(Process process)
+    {
+        try
+        {
+            ProcessStartInfo startInfo = new("taskkill", $"/T /F /PID {process.Id}")
             {
-                // odin already exited, or cannot be killed; the build is being cancelled either way.
-            }
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using Process? killer = Process.Start(startInfo);
+            killer?.WaitForExit(10000);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // odin already exited, or taskkill could not run; the build is being cancelled either way.
         }
     }
 
@@ -157,7 +187,7 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
             m_Process = process;
             if (m_Cancelled)
             {
-                process.Kill();
+                KillProcessTree(process);
             }
         }
 
