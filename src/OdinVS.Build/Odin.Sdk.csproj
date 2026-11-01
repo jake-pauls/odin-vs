@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Packs the Odin MSBuild SDK (Sdk.props, Sdk.targets, CPS rules, and the OdinVS.Core task assembly).
-       LOCAL ONLY: the .nupkg is checked into feed/ for private testing and must never be pushed to nuget.org or any other
-       feed. The "-local" version suffix and the metadata below exist so nobody mistakes it for a release. Pack with scripts/pack-sdk.ps1. -->
+       LOCAL ONLY: the .nupkg is built into the git-ignored nuget/ for private testing and must never be pushed to nuget.org or
+       any other feed. The "-local" version suffix and the metadata below exist so nobody mistakes it for a release. Pack with scripts/pack-sdk.ps1. -->
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <PackageId>Odin.Sdk</PackageId>
@@ -20,7 +20,7 @@
     <PackageTags>LOCAL-ONLY;DO-NOT-PUBLISH;private</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression></PackageLicenseExpression>
-    <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\feed\</PackageOutputPath>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\nuget\</PackageOutputPath>
   </PropertyGroup>
   <ItemGroup>
     <!-- Builds the task assembly first; the DLL itself is packed by path below, not referenced. -->

@@ -49,6 +49,17 @@ public sealed class OdinErrorParserTests
     }
 
     [TestMethod]
+    public void ParsesRealOdinDeprecationWarning()
+    {
+        OdinErrorOutput output = OdinErrorParser.Parse(Fixture("odin-warning.json"));
+        OdinDiagnostic warning = output.Diagnostics.Single();
+        Assert.IsTrue(warning.IsWarning);
+        Assert.AreEqual(11, warning.Line);
+        Assert.AreEqual(2, warning.Column);
+        Assert.AreEqual("old_thing is deprecated: use new_thing instead", warning.Message);
+    }
+
+    [TestMethod]
     public void WarningTypeIsAWarning()
     {
         const string Json = "{\"errors\":[{\"type\":\"warning\",\"pos\":{\"file\":\"a.odin\",\"line\":1,\"column\":1,\"end_column\":2},\"msgs\":[\"w\"]}]}";

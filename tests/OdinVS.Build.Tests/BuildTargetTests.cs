@@ -118,6 +118,18 @@ public sealed class BuildTargetTests
     }
 
     [TestMethod]
+    public void CompileWarningsAreCanonicalAndDoNotFailTheBuild()
+    {
+        (string project, MsBuildResult result) = BuildSample("WarnOdin");
+        Assert.AreEqual(0, result.ExitCode, result.Output);
+        string main = Path.Combine(project, "src", "main.odin");
+        Assert.IsTrue(
+            Regex.IsMatch(result.Output, Regex.Escape(main) + @"\(11,2,11,11\): warning ODIN0002: old_thing is deprecated: use new_thing instead"),
+            result.Output);
+        Assert.IsTrue(File.Exists(Exe(project, "Debug")), "a warning must not stop the exe from being produced");
+    }
+
+    [TestMethod]
     public void MissingOdinIsReportedWithoutRunningAnything()
     {
         string missing = Path.Combine(Path.GetTempPath(), "no-such-odin", "odin.exe");

@@ -5,7 +5,7 @@ namespace OdinVS.Build.Tests;
 
 internal sealed record MsBuildResult(int ExitCode, string Output);
 
-// Tier-3 harness. Packs the current Odin.Sdk source into a scratch feed (never the checked-in feed/, which may be stale),
+// Tier-3 harness. Packs the current Odin.Sdk source into a scratch feed (never the local nuget/, which may be stale),
 // then builds copies of tests/samples with `dotnet msbuild` using a scratch NuGet cache so same-version repacks are never served stale.
 internal sealed class MsBuildSandbox
 {

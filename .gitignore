@@ -3,3 +3,4 @@ obj/
 .vs/
 *.vsix
 .claude/settings.local.json
+nuget/*.nupkg
