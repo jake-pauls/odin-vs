@@ -180,7 +180,7 @@ public sealed class BuildTargetTests
     [TestMethod]
     public void PathsWithSpacesAndNonAsciiCharactersBuild()
     {
-        string directory = MsBuildSandbox.Instance.CopySample("HelloOdin", "my projects Ã©Ã¨");
+        string directory = MsBuildSandbox.Instance.CopySample("HelloOdin", "my projects éè");
         MsBuildResult result = MsBuildSandbox.Instance.Build(directory, "HelloOdin.odinproj", "Build");
         Assert.AreEqual(0, result.ExitCode, result.Output);
         Assert.IsTrue(File.Exists(Exe(directory, "Debug")), result.Output);

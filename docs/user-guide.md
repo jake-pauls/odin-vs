@@ -64,10 +64,10 @@ msbuild MyProject.odinproj /restore /t:Rebuild /p:Configuration=Release
 | `OutDir` | `bin\<Configuration>\` | Output directory (relative to the project, or absolute) |
 | `TargetName` | project name | Output file name without extension |
 | `TargetPath` | `<OutDir><TargetName>.exe` | Full output path |
-
-Project-level settings (names, paths, configurations) are plain MSBuild properties with defaults, so a `.odinproj` overrides them by setting them in its own `PropertyGroup`. Compiler options are not modelled as properties: pass them through `OdinExtraArgs`. Incremental builds look at the `OdinCompile` files and the `.odinproj`, so changing a property only with `/p:` on the command line does not trigger a rebuild; use the Rebuild target.
 | `Configurations` | `Debug;Release` | Configurations the project declares |
 | `Platforms` / `Platform` | `x64` | Only x64 is supported |
+
+Project-level settings (names, paths, configurations) are plain MSBuild properties with defaults, so a `.odinproj` overrides them by setting them in its own `PropertyGroup`. Compiler options are not modelled as properties: pass them through `OdinExtraArgs`. Incremental builds look at the `OdinCompile` files and the `.odinproj`, so changing a property only with `/p:` on the command line does not trigger a rebuild; use the Rebuild target.
 
 ## Configurations
 
