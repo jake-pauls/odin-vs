@@ -20,3 +20,7 @@ The Source column showed "IntelliSense" even when the middle layer set `source =
 
 ## The Exp instance must be closed before reinstalling
 The installer cannot replace the extension while an Exp `devenv.exe` holds it. The script asks Exp processes (matched by `/rootSuffix Exp` on the command line) to close, and force-kills them after 15 seconds. Unsaved edits to a sample open in Exp can otherwise end up in a commit, as happened with `broken/main.odin`.
+
+## CPS reads `ProjectConfiguration` metadata unevaluated
+`ProjectConfiguration` items whose metadata is computed (item transforms, `$([System.String]::...)`, even `$(Platform)`) show up as literal text in the Configuration Manager (`$([System.String]::C...`, `$(Platform)`), VS reports "Current solution contains unknown project configuration mappings", and Build is skipped ("Skipped Rebuild All"). `dotnet msbuild` evaluates the same expressions fine, so command-line builds and tier-3 tests pass. Found in Exp 18.11 on 2026-11-01 after the first M3 commit; the code came from the odin-targets-path spike, which had never been re-run in Exp after that change.
+Fix: declare the items with literal metadata (`Debug|x64` and `Release|x64`, each conditional on `$(Configurations)`, in `Sdk.targets`). Consequence: custom configuration names are not shown in VS. Guarded by tier-3 test `ProjectConfigurationsAreLiteralDebugAndReleaseX64`. Whether a user-written literal `ProjectConfiguration` item in the `.odinproj` shows a custom name in VS is untested.

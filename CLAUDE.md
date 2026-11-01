@@ -135,6 +135,9 @@ LSP servers normally own diagnostics and push them (`textDocument/publishDiagnos
 - Inheritance only where a VS/MPFProj base class forces it. Keep those subclasses thin, at the edge, delegating real work to composed collaborators.
 - Business logic lives in `OdinVS.Core` (no `Microsoft.VisualStudio.*` references) so it is unit-testable; VS-facing projects only adapt it.
 
+### Diagnostics
+The user-facing table of diagnostic codes (`ODIN0001`, `ODIN0002`, `ODIN0100`, `ODIN0101`, the `ols.*` codes) is in [docs/user-guide.md](docs/user-guide.md). When you add, change or remove any error, warning or other diagnostic, update that table in the same change, and add a tier-1 or tier-3 test for it. The `ODINnnnn` numbering is the user's accepted scheme (2026-11-01): compile errors/warnings 000x, build-process failures 01xx.
+
 ### Process (from user-level rules)
 Ask before dependency add/upgrade, network access beyond registries, file deletion, or running anything not defined by project commands. Branches, commits and PRs follow "Git workflow" below. Push only to `git@github.com:jake-pauls/`.
 
@@ -156,6 +159,7 @@ main
 8. Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. The repo-local identity is `jake-pauls <jakepauls99@gmail.com>`.
 9. Pushing: verify `git remote get-url origin` matches `git@github.com:jake-pauls/` first. Git Bash cannot see the Windows ssh-agent, so push from PowerShell with `$env:GIT_SSH_COMMAND = 'C:/Windows/System32/OpenSSH/ssh.exe'`.
 10. **Review before the PR:** when the user says "review", "review and open a PR" or similar, follow `.claude/skills/review-branch/SKILL.md` (also `/review-branch`): agent review, fix trivial findings, ask about the rest, then open the PR with a "please check" list.
+12. **Test in VS before committing anything that affects VS.** If a change touches what Visual Studio sees (the SDK props/targets and CPS rules, the project system, the VSIX, grammar or language configuration, the language client), load it in the Experimental instance and check the affected behavior there before the commit. Command-line `msbuild` and unit tests are not a substitute: M3's first commit passed all of them yet the Configuration Manager was broken in VS (see `docs/pitfalls.md`). Say in the commit or milestone note what was checked in VS, and what was not.
 11. **Decided:** all spike code goes under `spikes/<name>/` on its task branch, never into `src/` or `tests/` (the scratchpad is session-local and unreviewable); promote real pieces (e.g. `OlsClient` into `OdinVS.Core.Tests`) in later tasks.
 
 ## Architecture additions
