@@ -62,6 +62,16 @@ internal sealed class MsBuildSandbox
         return destination;
     }
 
+    // Evaluates the project without building and prints the named item (JSON), the way a static evaluation sees it.
+    public MsBuildResult GetItem(string projectDirectory, string projectFile, string item)
+    {
+        return Run(
+            "dotnet",
+            $"msbuild \"{Path.Combine(projectDirectory, projectFile)}\" -restore -getItem:{item} -nodeReuse:false -nologo",
+            projectDirectory,
+            new Dictionary<string, string> { ["NUGET_PACKAGES"] = PackagesDirectory });
+    }
+
     public MsBuildResult Build(string projectDirectory, string projectFile, string targets, params string[] properties)
     {
         string propertyArguments = string.Concat(properties.Select(p => $" -p:\"{p}\""));

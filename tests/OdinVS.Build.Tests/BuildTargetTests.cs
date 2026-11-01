@@ -98,6 +98,25 @@ public sealed class BuildTargetTests
         Assert.IsFalse(File.Exists(Exe(project, "Debug")));
     }
 
+    // CPS reads ProjectConfiguration metadata unevaluated (the Configuration Manager showed "$(Platform)" as text in Exp, 2026-11-01),
+    // so the metadata must contain no $( or %( at all.
+    [TestMethod]
+    public void ProjectConfigurationsAreLiteralDebugAndReleaseX64()
+    {
+        string project = MsBuildSandbox.Instance.CopySample("HelloOdin");
+        MsBuildResult result = MsBuildSandbox.Instance.GetItem(project, "HelloOdin.odinproj", "ProjectConfiguration");
+        Assert.AreEqual(0, result.ExitCode, result.Output);
+        StringAssert.Contains(result.Output, "\"Identity\": \"Debug|x64\"");
+        StringAssert.Contains(result.Output, "\"Identity\": \"Release|x64\"");
+        StringAssert.Contains(result.Output, "\"Platform\": \"x64\"");
+
+        string unevaluated = File.ReadAllText(Path.Combine(
+            MsBuildSandbox.Instance.PackagesDirectory, "odin.sdk", "0.3.1-local", "Sdk", "Sdk.targets"));
+        Assert.IsFalse(
+            Regex.IsMatch(unevaluated, @"<ProjectConfiguration[^>]*>(?:(?!</ProjectConfiguration>).)*(\$\(|%\()", RegexOptions.Singleline),
+            "ProjectConfiguration metadata in Sdk.targets must be literal");
+    }
+
     [TestMethod]
     public void MissingOdinIsReportedWithoutRunningAnything()
     {

@@ -8,14 +8,17 @@
 
   <UsingTask TaskName="OdinVS.Core.OdinBuild" AssemblyFile="$(MSBuildThisFileDirectory)tools\OdinVS.Core.dll" />
 
-  <!-- Built from the final Configurations value, so a project that sets its own list is honored (the props import runs before the
-       project body). One platform only (x64): static evaluation, which CPS uses, cannot batch over two item lists. -->
+  <!-- CPS reads ProjectConfiguration metadata unevaluated: metadata built from item transforms, property functions or $(Platform)
+       showed up as literal text in the Configuration Manager (found in Exp 2026-11-01). So the metadata must be literal values, and
+       only Debug and Release (x64) can be declared, each included when the project's Configurations list contains it. -->
   <ItemGroup>
-    <_OdinConfiguration Include="$(Configurations)" />
-    <_OdinConfigurationId Include="@(_OdinConfiguration->'%(Identity)|$(Platform)')" />
-    <ProjectConfiguration Include="@(_OdinConfigurationId)">
-      <Configuration>$([System.String]::Copy('%(Identity)').Split('|')[0])</Configuration>
-      <Platform>$(Platform)</Platform>
+    <ProjectConfiguration Include="Debug|x64" Condition="$([System.String]::Copy(';$(Configurations);').Contains(';Debug;'))">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64" Condition="$([System.String]::Copy(';$(Configurations);').Contains(';Release;'))">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
