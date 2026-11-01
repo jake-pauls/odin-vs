@@ -94,7 +94,7 @@ Moved to [docs/toolchain.md](docs/toolchain.md): odin/ols versions, `-json-error
 LSP servers normally own diagnostics and push them (`textDocument/publishDiagnostics`); ols has no analyzer of its own here, it wraps `odin check` on save, so the compiler stays the single source of truth. Start with ols as is. A stretch goal is having the extension run `odin check -json-errors` itself and feed VS error tags and the Error List (the JSON already carries line, column and end column), but it does not fix the main limit: `odin check` reads files from disk, so unsaved edits are invisible to ols and to our own runner alike unless we check a temp copy of the buffer. Our own runner would also duplicate ols's diagnostics unless ols's checker is disabled or filtered (unverified how), and needs debouncing and cancellation at 100 projects. Cheaper first step: send ols a `didSave` after an idle pause, or use VS auto-save. Revisit only if on-save latency hurts in real use.
 
 ## Open decisions
-- ~~`OdinTargetsPath` resolution~~ **Decided: MSBuild SDK `Odin.Sdk` shipped as a NuGet package** (finding 6; see `spikes/odin-targets-path/FINDINGS.md`). Remaining: where the feed lives (M3).
+- ~~`OdinTargetsPath` resolution~~ **Decided: MSBuild SDK `Odin.Sdk` shipped as a NuGet package** (finding 6; see `spikes/odin-targets-path/FINDINGS.md`). **Feed decided (user, 2026-11-01): the `.nupkg` is checked into `feed/` of this private repo** so it can be tested on another machine. It is marked LOCAL ONLY in its metadata (title, description, tags, `-local` version suffix, embedded README), in `feed/README.md` and by a pack-time warning, and is never published.
 - **Decided (user, 2026-10-30): `.odinproj` authors own their file list.** The SDK adds no `OdinCompile` glob or other items; each project (and its template) lists its own, e.g. `<OdinCompile Include="src\**\*.odin" />`. Intent: the `.odinproj` stays the readable source of truth, with no hidden defaults about what compiles. The SDK only supplies conditional defaults that a project can override, following `Microsoft.NET.Sdk`: `Configurations` = `Debug;Release`, `Configuration` = `Debug`, `Platforms`/`Platform` = `x64` (single platform for now). See `spikes/odin-targets-path/FINDINGS.md`.
 - ~~CPS vs MPFProj~~ **Decided: CPS** (see "Project system decision").
 - **Where the `odin.exe` location and default build flags come from** (stretch, late milestone; PR #1 review): `Odin.targets` must not hard-code `C:\Program Files\Odin\odin\dist\odin.exe` for every user. Read it from a user-level setting (the extension's options page, written to a per-user file the targets read), then PATH. Likewise let users extend the default flags (`-strict-style`, plus `-debug` only when `$(Configuration)` is `Debug`) via `OdinExtraArgs`. Interacts with finding 6.
@@ -163,8 +163,10 @@ main
 src/OdinVS.Core/            # netstandard2.0, no VS refs: error-output parser, odin arg builder,
                             # ols.json generator, version-compat check, .odinproj reader
 tests/OdinVS.Core.Tests/    # MSTest
-tests/OdinVS.Build.Tests/   # MSTest: runs msbuild on samples with a fake odin.exe
-tests/fake-odin/            # stub that emits canned Odin output/exit codes
+src/OdinVS.Build/           # Odin.Sdk package source: Sdk.props/targets, CPS rules, task DLL from Core. LOCAL ONLY, see feed/README.md
+feed/                       # checked-in local feed holding Odin.Sdk.*-local.nupkg (private repo; never publish)
+tests/OdinVS.Build.Tests/   # MSTest tier 3: packs the SDK to a scratch feed, runs `dotnet msbuild` on copies of tests/samples with real odin
+                            # (no fake-odin: real odin is installed and fast; "missing odin" uses a bad OdinExe)
 ```
 `OdinVS.LanguageServer` and `OdinVS.ProjectSystem` call into `Core`. If M0 shows the MEF `ILanguageClient`/content-type exports are not discovered from a referenced assembly, fold `LanguageServer` into the host project.
 
@@ -175,14 +177,14 @@ Tests are chosen by what can fail, cheapest first.
 |---|---|---|---|
 | 1 Unit | Odin error parser, `odin build` argument builder, `ols.json` generator, version-compat check, `.odinproj` property mapping | MSTest on `OdinVS.Core`; table-driven cases using captured real Odin output as fixtures | Yes |
 | 2 ols protocol | ols works with a generic LSP client: `initialize`, `didOpen` of a broken file, expect diagnostics | Small test that spawns the pinned `ols.exe`, speaks JSON-RPC over stdio. Runs before any VS code and re-runs when ols is bumped | Yes (needs ols + Odin installed; mark `[TestCategory("RequiresToolchain")]`) |
-| 3 MSBuild | `Odin.targets`: build, clean, rebuild, incremental skip, Debug emits PDB, error mapping, missing odin | `msbuild` against a sample under `tests/samples/` (to be promoted from `spikes/`) with `tests/fake-odin` (fast, deterministic) plus a small real-Odin subset | Yes |
+| 3 MSBuild | `Sdk.targets`: build, clean, rebuild, incremental skip, Debug emits PDB, error mapping, missing odin | `dotnet msbuild` against copies of samples under `tests/samples/` with real odin (`RequiresToolchain`; no fake-odin) | Yes |
 | 4 VSIX smoke | Colorization, squiggles, Error List, project load, F5, breakpoints | Manual checklists below in the Experimental instance | No, until proven worth it |
 | 5 VS integration | Scripted UI tests in a VS instance | Defer. The VS integration-test library may be xUnit-oriented **(unverified)**; revisit after M4 | Later |
 
 Rules: every Core change ships with a tier-1 test; every `Odin.targets` change ships with a tier-3 test; the VSIX smoke checklist is run, and results noted, before declaring a milestone done. Grammar changes get a fixture `.odin` file under `tests/samples/` that exercises each token category, reviewed visually; automated grammar tests would need a new dependency (ask first).
 
 Build/test commands (record real ones here as they are established):
-- Build VSIX: VS MSBuild with `/restore` (see skill). Unit tests: `dotnet test tests/OdinVS.Core.Tests`.
+- Build VSIX: VS MSBuild with `/restore` (see skill). Unit tests: `dotnet test tests/OdinVS.Core.Tests`. Tier-3 build tests: `dotnet test tests/OdinVS.Build.Tests` (about 10 s, real odin). After changing `src/OdinVS.Build` or the task in Core, run `scripts\pack-sdk.ps1` and commit the new `feed/*.nupkg`; it is local-only and must never be pushed to any package feed (user, 2026-11-01).
 - Rebuild, reinstall into Exp and launch it on a sample: `scripts\exp-reinstall.ps1 [-Bump] [-OpenFile <path>]` (closes any running Exp, `-Bump` raises the manifest patch version). Known quirks are in `docs/pitfalls.md`.
 - Bundled ols is pinned: `src/OdinVS/ols/ols.pin` holds its version and SHA-256, the `VerifyBundledOls` target in `OdinVS.csproj` fails the build if `ols.exe` differs, and `BundledOlsPinTests` checks the same plus `BundledOls.Version`. Replace ols only with `scripts\bump-ols.ps1 [-Version dev-YYYY-MM]` (copies from the local Odin install, updates the pin, `BundledOls.cs` and `THIRD-PARTY-NOTICES.md`, runs the tier-2 tests).
 - Experimental instance: F5 from the host project. Verify installs in the instance, not by exit code.
