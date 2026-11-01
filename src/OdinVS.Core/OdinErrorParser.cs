@@ -14,7 +14,7 @@ internal static class OdinErrorParser
     {
         string trimmed = stderr.Trim();
         int start = FindJsonStart(trimmed);
-        if (start < 0 || !MiniJson.TryParse(trimmed.Substring(start), out object? root) || root is not Dictionary<string, object?> document)
+        if (start < 0 || !MiniJson.TryParsePrefix(trimmed.Substring(start), out object? root, out int jsonLength) || root is not Dictionary<string, object?> document)
         {
             return new OdinErrorOutput([], trimmed);
         }
@@ -31,7 +31,9 @@ internal static class OdinErrorParser
             }
         }
 
-        return new OdinErrorOutput(diagnostics, start > 0 ? trimmed.Substring(0, start).Trim() : string.Empty);
+        string before = trimmed.Substring(0, start).Trim();
+        string after = trimmed.Substring(start + jsonLength).Trim();
+        return new OdinErrorOutput(diagnostics, before.Length > 0 && after.Length > 0 ? before + "\n" + after : before + after);
     }
 
     // The JSON object starts at the first line that is just "{"; text before it is other tool output.

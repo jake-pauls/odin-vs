@@ -9,19 +9,21 @@ internal sealed class MiniJson(string text)
 {
     private int m_Index;
 
-    public static bool TryParse(string text, out object? value)
+    // Reads one JSON value from the start of the text and reports how many characters it covered, so the caller can keep what follows.
+    public static bool TryParsePrefix(string text, out object? value, out int length)
     {
         try
         {
             MiniJson reader = new(text);
             reader.SkipWhitespace();
             value = reader.ReadValue();
-            reader.SkipWhitespace();
-            return reader.m_Index == text.Length;
+            length = reader.m_Index;
+            return true;
         }
         catch (FormatException)
         {
             value = null;
+            length = 0;
             return false;
         }
     }

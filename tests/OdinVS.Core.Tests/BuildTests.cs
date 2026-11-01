@@ -32,6 +32,14 @@ public sealed class OdinErrorParserTests
     }
 
     [TestMethod]
+    public void KeepsDiagnosticsWhenTextFollowsTheJson()
+    {
+        OdinErrorOutput output = OdinErrorParser.Parse(Fixture("odin-errors.json") + "\nLINK : trailing note\n");
+        Assert.HasCount(2, output.Diagnostics);
+        Assert.AreEqual("LINK : trailing note", output.OtherText);
+    }
+
+    [TestMethod]
     public void ReturnsNonJsonTextUnparsed()
     {
         OdinErrorOutput output = OdinErrorParser.Parse("link.exe failed\n");

@@ -28,7 +28,7 @@ What you get today: `.odin` syntax colorization, language-server diagnostics on 
 A project uses the `Odin.Sdk` MSBuild SDK and lists its own source files:
 
 ```xml
-<Project Sdk="Odin.Sdk/0.3.1-local">
+<Project Sdk="Odin.Sdk/0.3.2-local">
   <ItemGroup>
     <OdinCompile Include="src\**\*.odin" />
   </ItemGroup>
@@ -42,13 +42,30 @@ msbuild MyProject.odinproj /restore /t:Build
 msbuild MyProject.odinproj /restore /t:Rebuild /p:Configuration=Release
 ```
 
-`Odin.Sdk` is a local-only package built by `scripts\pack-sdk.ps1` into `nuget/` (see `nuget/README.md`); point a `nuget.config` at that folder (see `tests/samples/nuget.config`). Output goes to `bin\<Configuration>\<ProjectName>.exe`. Debug builds add `-debug` and produce a `.pdb`; Release builds do not.
+`Odin.Sdk` is a local-only package built by `scripts\pack-sdk.ps1` into `nuget/` (see `nuget/README.md`); point a `nuget.config` next to your project (or any parent folder) at that folder:
+
+```xml
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="local-odin" value="C:\path\to\odin-vs\nuget" />
+  </packageSources>
+</configuration>
+```
+
+`tests/samples/nuget.config` is a working example. Output goes to `bin\<Configuration>\<ProjectName>.exe`. Debug builds add `-debug` and produce a `.pdb`; Release builds do not.
 
 | Property | Default | Meaning |
 |---|---|---|
 | `OdinExe` | empty (search `PATH`, then `C:\Program Files\Odin\odin\dist\odin.exe`) | Path to `odin.exe` |
-| `OdinPackageDir` | `src` | Directory passed to `odin build` |
-| `OdinExtraArgs` | empty | Extra arguments appended to the `odin build` command |
+| `OdinPackageDir` | `src` | Directory passed to `odin build` (relative to the project, or absolute) |
+| `OdinExtraArgs` | empty | Extra arguments appended to the `odin build` command; **the place for any `odin` compiler option** (`-o:speed`, `-define:X=1`, `-vet`) |
+| `OdinDebug` | `true` in Debug, `false` otherwise | Adds `-debug` (and produces the `.pdb`). A default you can override per project, e.g. `<OdinDebug>true</OdinDebug>` in a Profile configuration |
+| `OutDir` | `bin\<Configuration>\` | Output directory (relative to the project, or absolute) |
+| `TargetName` | project name | Output file name without extension |
+| `TargetPath` | `<OutDir><TargetName>.exe` | Full output path |
+
+Project-level settings (names, paths, configurations) are plain MSBuild properties with defaults, so a `.odinproj` overrides them by setting them in its own `PropertyGroup`. Compiler options are not modelled as properties: pass them through `OdinExtraArgs`. Incremental builds look at the `OdinCompile` files and the `.odinproj`, so changing a property only with `/p:` on the command line does not trigger a rebuild; use the Rebuild target.
 | `Configurations` | `Debug;Release` | Configurations the project declares |
 | `Platforms` / `Platform` | `x64` | Only x64 is supported |
 
@@ -89,6 +106,7 @@ Odin does not give its errors codes, so odin-vs assigns them.
 | `ODIN0002` | warning | Odin reported a compile warning, for example use of a `@(deprecated)` procedure | Does not fail the build; the exe is still produced |
 | `ODIN0100` | error | `odin build` failed (non-zero exit) but gave no error list, such as a link failure or crash | The message carries whatever Odin printed |
 | `ODIN0101` | error | `odin.exe` was not found | Install Odin, add it to `PATH`, or set `OdinExe` |
+| `ODINPKG1` | warning | Packing `Odin.Sdk` with `scripts\pack-sdk.ps1` | Reminder that the package is local only and must not be published; not a build diagnostic |
 | `ols.<code>` | error | A diagnostic from the ols language server while editing (for example `ols.checker`, `ols.Syntax`) | Appears on save; not part of the build |
 
 Notes:

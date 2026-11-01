@@ -31,6 +31,24 @@ internal sealed class MsBuildSandbox
 
     public string FeedDirectory { get; }
 
+    // Removes this run's scratch folder (feed, package cache, sample copies) so %TEMP% does not grow with every test run.
+    public static void CleanUp()
+    {
+        if (!m_Instance.IsValueCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(m_Instance.Value.m_Root, true);
+        }
+        catch (IOException)
+        {
+            // Best-effort: a lingering msbuild node can hold a file; the folder is under %TEMP% and harmless to leave.
+        }
+    }
+
     public string PackagesDirectory { get; }
 
     private static string RepoRoot { get; } = typeof(MsBuildSandbox).Assembly
@@ -38,7 +56,7 @@ internal sealed class MsBuildSandbox
         .First(attribute => attribute.Key is "RepoRoot").Value!;
 
     // Copies tests/samples/<sample> to a fresh directory next to a nuget.config that points only at the scratch feed.
-    public string CopySample(string sample)
+    public string CopySample(string sample, string? parentFolder = null)
     {
         string workDirectory = Path.Combine(m_Root, "work", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workDirectory);
@@ -46,7 +64,7 @@ internal sealed class MsBuildSandbox
             Path.Combine(workDirectory, "nuget.config"),
             $"""<configuration><packageSources><clear /><add key="scratch" value="{FeedDirectory}" /></packageSources></configuration>""");
         string source = Path.Combine(RepoRoot, "tests", "samples", sample);
-        string destination = Path.Combine(workDirectory, sample);
+        string destination = Path.Combine(workDirectory, parentFolder ?? string.Empty, sample);
         foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
         {
             string relative = Path.GetRelativePath(source, file);

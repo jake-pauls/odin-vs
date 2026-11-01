@@ -18,6 +18,18 @@ public sealed class BuildTargetTests
         return (directory, MsBuildSandbox.Instance.Build(directory, sample + ".odinproj", targets, properties));
     }
 
+    [AssemblyCleanup]
+    public static void CleanUpSandbox() => MsBuildSandbox.CleanUp();
+
+    // Appends extra project XML to a copy of a sample's .odinproj, so a test can set properties or items the way a user would.
+    private static string CopySampleWith(string sample, string extraProjectXml, string? parentFolder = null)
+    {
+        string directory = MsBuildSandbox.Instance.CopySample(sample, parentFolder);
+        string project = Path.Combine(directory, sample + ".odinproj");
+        File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>", extraProjectXml + "\n</Project>"));
+        return directory;
+    }
+
     [TestMethod]
     public void DebugBuildProducesRunnableExeAndPdb()
     {
@@ -138,5 +150,72 @@ public sealed class BuildTargetTests
         StringAssert.Contains(result.Output, "error ODIN0101");
         StringAssert.Contains(result.Output, missing);
         Assert.IsFalse(File.Exists(Exe(project, "Debug")));
+    }
+
+    [TestMethod]
+    public void FailureWithoutAnErrorListIsReportedAsOdin0100()
+    {
+        string directory = MsBuildSandbox.Instance.CopySample("HelloOdin");
+        string fake = Path.Combine(directory, "fake-odin.cmd");
+        File.WriteAllText(fake, "@echo the linker exploded 1>&2\r\n@exit /b 1\r\n");
+        MsBuildResult result = MsBuildSandbox.Instance.Build(directory, "HelloOdin.odinproj", "Build", "OdinExe=" + fake);
+        Assert.AreNotEqual(0, result.ExitCode, result.Output);
+        StringAssert.Contains(result.Output, "error ODIN0100");
+        StringAssert.Contains(result.Output, "exit code 1");
+        StringAssert.Contains(result.Output, "the linker exploded");
+    }
+
+    [TestMethod]
+    public void ExtraArgsAndCollectionsReachTheOdinCommandLine()
+    {
+        string directory = CopySampleWith(
+            "HelloOdin",
+            """<ItemGroup><OdinCollection Include="mylib"><Path>src</Path></OdinCollection></ItemGroup><PropertyGroup><OdinExtraArgs>-define:EXTRA_FLAG=1</OdinExtraArgs></PropertyGroup>""");
+        MsBuildResult result = MsBuildSandbox.Instance.Build(directory, "HelloOdin.odinproj", "Build");
+        Assert.AreEqual(0, result.ExitCode, result.Output);
+        StringAssert.Contains(result.Output, "-collection:mylib=src");
+        StringAssert.Contains(result.Output, "-define:EXTRA_FLAG=1");
+    }
+
+    [TestMethod]
+    public void PathsWithSpacesAndNonAsciiCharactersBuild()
+    {
+        string directory = MsBuildSandbox.Instance.CopySample("HelloOdin", "my projects Ã©Ã¨");
+        MsBuildResult result = MsBuildSandbox.Instance.Build(directory, "HelloOdin.odinproj", "Build");
+        Assert.AreEqual(0, result.ExitCode, result.Output);
+        Assert.IsTrue(File.Exists(Exe(directory, "Debug")), result.Output);
+    }
+
+    [TestMethod]
+    public void OutputSettingsCanBeOverriddenInTheProject()
+    {
+        string directory = CopySampleWith(
+            "HelloOdin",
+            "<PropertyGroup><OutDir>out</OutDir><TargetName>renamed</TargetName></PropertyGroup>");
+        MsBuildResult result = MsBuildSandbox.Instance.Build(directory, "HelloOdin.odinproj", "Build");
+        Assert.AreEqual(0, result.ExitCode, result.Output);
+        Assert.IsTrue(File.Exists(Path.Combine(directory, "out", "renamed.exe")), result.Output);
+        Assert.IsTrue(File.Exists(Path.Combine(directory, "out", "renamed.pdb")), "the PDB must follow the target name");
+    }
+
+    [TestMethod]
+    public void OdinDebugCanBeOverriddenAndAbsolutePackageDirWorks()
+    {
+        string directory = CopySampleWith("HelloOdin", "<PropertyGroup><OdinDebug>false</OdinDebug></PropertyGroup>");
+        MsBuildResult result = MsBuildSandbox.Instance.Build(directory, "HelloOdin.odinproj", "Build", "OdinPackageDir=" + Path.Combine(directory, "src"));
+        Assert.AreEqual(0, result.ExitCode, result.Output);
+        Assert.IsTrue(File.Exists(Exe(directory, "Debug")), result.Output);
+        Assert.IsFalse(File.Exists(Exe(directory, "Debug", "pdb")), "OdinDebug=false must not emit a PDB");
+    }
+
+    [TestMethod]
+    public void MissingPdbTriggersARebuildInDebug()
+    {
+        (string project, MsBuildResult first) = BuildSample("HelloOdin");
+        Assert.AreEqual(0, first.ExitCode, first.Output);
+        File.Delete(Exe(project, "Debug", "pdb"));
+        MsBuildResult second = MsBuildSandbox.Instance.Build(project, "HelloOdin.odinproj", "Build");
+        Assert.AreEqual(0, second.ExitCode, second.Output);
+        Assert.IsTrue(File.Exists(Exe(project, "Debug", "pdb")), second.Output);
     }
 }

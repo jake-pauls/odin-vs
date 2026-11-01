@@ -1,16 +1,21 @@
 using System.Diagnostics;
+using System.Text;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
 
 namespace OdinVS.Core;
 
 // Public because MSBuild instantiates tasks by reflection. Argument building and error parsing live in internal classes with unit tests.
-public sealed class OdinBuild : Microsoft.Build.Utilities.Task
+public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
 {
     public const string ErrorCode = "ODIN0001";
     public const string WarningCode = "ODIN0002";
     public const string FailedWithoutDiagnosticsCode = "ODIN0100";
     public const string OdinNotFoundCode = "ODIN0101";
+
+    private readonly object m_Lock = new();
+    private Process? m_Process;
+    private bool m_Cancelled;
 
     // Explicit path to odin.exe; when empty the task searches PATH and then the default install location.
     public string OdinExe { get; set; } = string.Empty;
@@ -116,21 +121,56 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task
         return odin;
     }
 
-    private static int Run(string odin, string arguments, out string stdout, out string stderr)
+    // Called by MSBuild when the build is cancelled (Cancel Build in VS, Ctrl+C). Kills odin; its child processes (the linker) are not tracked.
+    public void Cancel()
     {
+        lock (m_Lock)
+        {
+            m_Cancelled = true;
+            try
+            {
+                m_Process?.Kill();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                // odin already exited, or cannot be killed; the build is being cancelled either way.
+            }
+        }
+    }
+
+    private int Run(string odin, string arguments, out string stdout, out string stderr)
+    {
+        // Odin writes UTF-8; the default console code page would mangle non-ASCII paths and messages.
+        UTF8Encoding utf8 = new(false);
         ProcessStartInfo startInfo = new(odin, arguments)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = utf8,
+            StandardErrorEncoding = utf8,
         };
         using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException("Process.Start returned null");
+        lock (m_Lock)
+        {
+            m_Process = process;
+            if (m_Cancelled)
+            {
+                process.Kill();
+            }
+        }
+
         // Read both pipes at once so a full stderr buffer cannot stall odin.
         System.Threading.Tasks.Task<string> errors = process.StandardError.ReadToEndAsync();
         stdout = process.StandardOutput.ReadToEnd();
         process.WaitForExit();
         stderr = errors.Result;
+        lock (m_Lock)
+        {
+            m_Process = null;
+        }
+
         return process.ExitCode;
     }
 }
