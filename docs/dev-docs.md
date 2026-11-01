@@ -14,7 +14,7 @@ How to build, test and run a development version of the extension after cloning.
 git clone git@github.com:jake-pauls/odin-vs.git
 cd odin-vs
 dotnet --version
-odin version
+odin version    # or: & 'C:\Program Files\Odin\odin\dist\odin.exe' version, if odin is not on PATH
 ```
 
 ## 2. Build the local SDK package

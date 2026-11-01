@@ -9,7 +9,7 @@ internal sealed record OdinErrorOutput(IReadOnlyList<OdinDiagnostic> Diagnostics
 internal static class OdinErrorParser
 {
     // Shape verified against odin dev-2026-10: one JSON object on stderr, {error_count, errors[{type, pos{file,line,column,end_column}, msgs[]}]}.
-    // Warnings were never observed with a distinct type; anything but "warning" is treated as an error.
+    // Warnings come back as type "warning" (verified with an @(deprecated) call, fixture odin-warning.json); anything else is treated as an error.
     public static OdinErrorOutput Parse(string stderr)
     {
         string trimmed = stderr.Trim();

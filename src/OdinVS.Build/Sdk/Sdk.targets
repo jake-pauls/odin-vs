@@ -31,8 +31,7 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <!-- Empty means the task searches PATH, then C:\Program Files\Odin\odin\dist\odin.exe. Set it in the .odinproj to override. -->
-    <OdinExe Condition="'$(OdinExe)' == ''"></OdinExe>
+    <!-- OdinExe is intentionally not defaulted: empty makes the task search PATH, then C:\Program Files\Odin\odin\dist\odin.exe. Set it in the .odinproj to override. -->
     <OdinPackageDir Condition="'$(OdinPackageDir)' == ''">src</OdinPackageDir>
     <OdinExtraArgs Condition="'$(OdinExtraArgs)' == ''"></OdinExtraArgs>
     <OutDir>$(MSBuildProjectDirectory)\bin\$(Configuration)\</OutDir>

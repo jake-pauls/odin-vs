@@ -110,8 +110,8 @@ public sealed class BuildTargetTests
         StringAssert.Contains(result.Output, "\"Identity\": \"Release|x64\"");
         StringAssert.Contains(result.Output, "\"Platform\": \"x64\"");
 
-        string unevaluated = File.ReadAllText(Path.Combine(
-            MsBuildSandbox.Instance.PackagesDirectory, "odin.sdk", "0.3.1-local", "Sdk", "Sdk.targets"));
+        string sdkVersionDirectory = Directory.GetDirectories(Path.Combine(MsBuildSandbox.Instance.PackagesDirectory, "odin.sdk")).Single();
+        string unevaluated = File.ReadAllText(Path.Combine(sdkVersionDirectory, "Sdk", "Sdk.targets"));
         Assert.IsFalse(
             Regex.IsMatch(unevaluated, @"<ProjectConfiguration[^>]*>(?:(?!</ProjectConfiguration>).)*(\$\(|%\()", RegexOptions.Singleline),
             "ProjectConfiguration metadata in Sdk.targets must be literal");

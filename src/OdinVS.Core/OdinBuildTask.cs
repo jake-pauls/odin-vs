@@ -76,12 +76,13 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task
             }
         }
 
-        if (output.OtherText.Length > 0)
+        bool failedWithoutDiagnostics = exitCode != 0 && !output.Diagnostics.Any(d => !d.IsWarning);
+        if (output.OtherText.Length > 0 && !failedWithoutDiagnostics)
         {
             Log.LogMessage(MessageImportance.High, "{0}", output.OtherText);
         }
 
-        if (exitCode != 0 && !output.Diagnostics.Any(d => !d.IsWarning))
+        if (failedWithoutDiagnostics)
         {
             // Failures with no JSON errors (linker, crash): do not report success; show whatever odin printed.
             string detail = output.OtherText.Length > 0 ? output.OtherText : "no output";
