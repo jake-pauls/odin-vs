@@ -66,7 +66,8 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
         }
 
         string odinPath = next.OdinPath;
-        _ = Task.Run(() => CheckVersions(odinPath), token);
+        string olsPath = next.Process.StartInfo.FileName;
+        _ = Task.Run(() => CheckVersions(olsPath, odinPath), token);
         return new Connection(next.Process.StandardOutput.BaseStream, next.Process.StandardInput.BaseStream);
     }
 
@@ -92,12 +93,12 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
         });
     }
 
-    private void CheckVersions(string odinPath)
+    private void CheckVersions(string olsPath, string odinPath)
     {
         try
         {
-            string? warning = VersionCompatibility.Check(m_Launcher.ReadOdinVersion(odinPath), BundledOls.Version);
-            m_Log.Write(warning is null ? $"bundled ols {BundledOls.Version} matches installed odin" : $"WARNING: {warning}");
+            IReadOnlyList<string> warnings = ToolWarnings.Compute(new ResolvedTools(olsPath, odinPath, []), m_Launcher.ReadOdinVersion(odinPath), BundledOls.Version);
+            m_Log.Write(warnings.Count == 0 ? $"bundled ols {BundledOls.Version} matches installed odin" : $"WARNING: {string.Join(" ", warnings)}");
         }
         catch (Exception ex)
         {
