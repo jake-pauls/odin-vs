@@ -10,7 +10,9 @@ public sealed class TemplateVersionTests
     private static string PackedVersion()
     {
         string text = File.ReadAllText(Path.Combine(RepoPaths.Root, "src", "OdinVS.Build", "Odin.Sdk.csproj"));
-        return Regex.Match(text, "<Version>([^<]+)</Version>").Groups[1].Value;
+        Match match = Regex.Match(text, "<Version>([^<]+)</Version>");
+        Assert.IsTrue(match.Success, "no <Version> in Odin.Sdk.csproj; update this test's pattern");
+        return match.Groups[1].Value;
     }
 
     [TestMethod]
@@ -23,7 +25,9 @@ public sealed class TemplateVersionTests
     [TestMethod]
     public void SampleProjectsUseThePackedSdkVersion()
     {
-        foreach (string project in Directory.GetFiles(Path.Combine(RepoPaths.Root, "tests", "samples"), "*.odinproj", SearchOption.AllDirectories))
+        string[] projects = Directory.GetFiles(Path.Combine(RepoPaths.Root, "tests", "samples"), "*.odinproj", SearchOption.AllDirectories);
+        Assert.IsNotEmpty(projects);
+        foreach (string project in projects)
         {
             if (project.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
             {

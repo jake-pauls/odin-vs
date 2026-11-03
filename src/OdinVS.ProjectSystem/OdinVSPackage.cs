@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.VisualStudio;
@@ -27,12 +28,12 @@ public sealed class OdinVSPackage : AsyncPackage
         string extensionDirectory = ExtensionDirectory();
         await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
         UIContext context = UIContext.FromUIContextGuid(new Guid(OdinProjectContextGuidString));
-        context.WhenActivated(() => JoinableTaskFactory.RunAsync(() => ShowToolWarningsAsync(extensionDirectory)).Task.FileAndForget("odinvs/toolwarnings"));
+        context.WhenActivated(() => JoinableTaskFactory.RunAsync(() => ShowToolWarningsAsync(extensionDirectory, DisposalToken)).Task.FileAndForget("odinvs/toolwarnings"));
     }
 
     private static string ExtensionDirectory() => Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
 
-    private async Task ShowToolWarningsAsync(string extensionDirectory)
+    private async Task ShowToolWarningsAsync(string extensionDirectory, CancellationToken cancellationToken)
     {
         try
         {
@@ -41,7 +42,7 @@ public sealed class OdinVSPackage : AsyncPackage
                 return;
             }
 
-            IReadOnlyList<string> warnings = await Task.Run(() => CollectWarnings(extensionDirectory));
+            IReadOnlyList<string> warnings = await Task.Run(() => CollectWarnings(extensionDirectory), cancellationToken);
             m_Log.Write(warnings.Count == 0 ? "tool check: odin and ols found, versions match" : $"tool check: {warnings.Count} warning(s)");
             if (warnings.Count == 0)
             {
@@ -49,8 +50,11 @@ public sealed class OdinVSPackage : AsyncPackage
             }
 
             m_WarningsShown = true;
-            await JoinableTaskFactory.SwitchToMainThreadAsync();
-            await ShowInfoBarAsync(string.Join(" ", warnings));
+            await ShowInfoBarAsync(string.Join(" ", warnings), cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // VS is shutting down; there is nothing to show.
         }
         catch (Exception ex)
         {
@@ -65,9 +69,9 @@ public sealed class OdinVSPackage : AsyncPackage
         return ToolWarnings.Compute(tools, versionText, BundledOls.Version);
     }
 
-    private async Task ShowInfoBarAsync(string text)
+    private async Task ShowInfoBarAsync(string text, CancellationToken cancellationToken)
     {
-        await JoinableTaskFactory.SwitchToMainThreadAsync();
+        await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
         if (await GetServiceAsync(typeof(SVsShell)) is not IVsShell shell
             || await GetServiceAsync(typeof(SVsInfoBarUIFactory)) is not IVsInfoBarUIFactory factory
             || ErrorHandler.Failed(shell.GetProperty((int)__VSSPROPID7.VSSPROPID_MainWindowInfoBarHost, out object hostObject))
@@ -82,25 +86,31 @@ public sealed class OdinVSPackage : AsyncPackage
             KnownMonikers.StatusWarning,
             true);
         IVsInfoBarUIElement element = factory.CreateInfoBar(model);
-        element.Advise(new LogLinkHandler(Log.DataDirectory), out _);
+        LogLinkHandler handler = new(Log.DataDirectory, m_Log);
+        element.Advise(handler, out uint cookie);
+        handler.Cookie = cookie;
         host.AddInfoBar(element);
     }
 
-    private sealed class LogLinkHandler(string dataDirectory) : IVsInfoBarUIEvents
+    private sealed class LogLinkHandler(string dataDirectory, Log log) : IVsInfoBarUIEvents
     {
+        public uint Cookie { get; set; }
+
         public void OnClosed(IVsInfoBarUIElement infoBarUIElement)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            infoBarUIElement.Unadvise(Cookie);
         }
 
         public void OnActionItemClicked(IVsInfoBarUIElement infoBarUIElement, IVsInfoBarActionItem actionItem)
         {
             try
             {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(dataDirectory, "odinvs.log")) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(Path.Combine(dataDirectory, "odinvs.log")) { UseShellExecute = true });
             }
             catch (Exception ex)
             {
-                Log.Default.Write($"could not open the log: {ex.Message}. Open {dataDirectory}\\odinvs.log by hand.");
+                log.Write($"could not open the log: {ex.Message}. Open {dataDirectory}\\odinvs.log by hand.");
             }
         }
     }

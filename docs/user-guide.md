@@ -65,7 +65,6 @@ msbuild MyProject.odinproj /restore /t:Rebuild /p:Configuration=Release
 
 `tests/samples/nuget.config` is a working example. A project created from the Odin templates in Visual Studio needs steps 2 and 3 as well; until they are done it fails to load with an SDK-resolution error.
 
-
 Output goes to `bin\<Configuration>\<ProjectName>.exe` unless overridden; see [Project properties and items](#project-properties-and-items). Debug builds add `-debug` and produce a `.pdb`; Release builds do not.
 
 ## Project properties and items

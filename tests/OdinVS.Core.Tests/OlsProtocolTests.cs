@@ -71,7 +71,7 @@ public sealed class OlsProtocolTests
     }
 
     // LSP DiagnosticSeverity: 1 error, 2 warning. A deprecated call is an odin warning (ODIN0002 in builds); it must reach VS as
-    // a warning so the editor draws a yellow squiggle.
+    // a warning so the editor draws its warning squiggle.
     [TestMethod]
     public void DeprecatedCallIsPublishedWithWarningSeverity()
     {
@@ -89,7 +89,6 @@ public sealed class OlsProtocolTests
 
         Assert.IsNotNull(published, "no non-empty publishDiagnostics after didSave: " + string.Join(" | ", client.Stderr));
         JsonArray diagnostics = published["params"]!["diagnostics"]!.AsArray();
-        Console.WriteLine("diagnostics: " + diagnostics.ToJsonString());
         Assert.AreEqual(2, (int)diagnostics[0]!["severity"]!, "deprecation should be a warning: " + diagnostics.ToJsonString());
     }
 
