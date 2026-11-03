@@ -21,7 +21,7 @@ What you get today: `.odin` syntax colorization, language-server diagnostics on 
 3. Close Visual Studio, then double-click `OdinVS.vsix` and choose *Install*. Reopen Visual Studio and open any `.odin` file.
 4. To update after pulling changes: rebuild, close Visual Studio, and run the new `.vsix`. If VS reports the same version as already installed, raise the `Version` in `src\OdinVS\source.extension.vsixmanifest` first.
 5. To remove it: *Extensions > Manage Extensions > Installed > Odin for Visual Studio > Uninstall*, then restart VS.
-6. To build `.odinproj` files, run `scripts\pack-sdk.ps1` once (it creates the local `Odin.Sdk` package in `nuget\`), then follow the next section.
+6. To build `.odinproj` files you also need the local `Odin.Sdk` package; see "Getting `Odin.Sdk` for a project" below.
 
 ## Building an `.odinproj`
 
@@ -42,18 +42,29 @@ msbuild MyProject.odinproj /restore /t:Build
 msbuild MyProject.odinproj /restore /t:Rebuild /p:Configuration=Release
 ```
 
-`Odin.Sdk` is a local-only package built by `scripts\pack-sdk.ps1` into `nuget/` (see `nuget/README.md`); point a `nuget.config` next to your project (or any parent folder) at that folder:
+### Getting `Odin.Sdk` for a project
 
-```xml
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="local-odin" value="C:\path\to\odin-vs\nuget" />
-  </packageSources>
-</configuration>
-```
+`Odin.Sdk` is local-only: it is never published to nuget.org or any shared feed, and the extension does not install it. Each project (or a parent folder shared by several) points NuGet at your local copy:
 
-`tests/samples/nuget.config` is a working example.
+1. Build the package once per machine, and again after pulling changes to `src\OdinVS.Build` or `src\OdinVS.Core`. It is written to `nuget\` (see `nuget\README.md`):
+   ```
+   scripts\pack-sdk.ps1
+   ```
+2. Next to the `.odinproj` (or in any parent folder, to cover several projects) create a `nuget.config` that points at that folder. `<clear />` drops nuget.org, which is not needed:
+   ```xml
+   <?xml version="1.0" encoding="utf-8"?>
+   <configuration>
+     <packageSources>
+       <clear />
+       <add key="local-odin" value="C:\path\to\odin-vs\nuget" />
+     </packageSources>
+   </configuration>
+   ```
+3. Make sure the project's `Sdk` attribute names the version you packed: the file `nuget\Odin.Sdk.<version>.nupkg` gives it, e.g. `Odin.Sdk/0.3.3-local`.
+4. Build or reload the project. The first restore pulls the SDK into `~\.nuget\packages`; if you repack the same version, delete `~\.nuget\packages\odin.sdk` (or bump the version) or the old copy keeps being used.
+
+`tests/samples/nuget.config` is a working example. A project created from the Odin templates in Visual Studio needs steps 2 and 3 as well; until they are done it fails to load with an SDK-resolution error.
+
 
 Output goes to `bin\<Configuration>\<ProjectName>.exe` unless overridden; see [Project properties and items](#project-properties-and-items). Debug builds add `-debug` and produce a `.pdb`; Release builds do not.
 
