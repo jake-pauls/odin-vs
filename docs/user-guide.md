@@ -1,14 +1,14 @@
 # Odin for Visual Studio: user guide
 
-User-facing notes for people building `.odinproj` projects. Developer material lives in [dev-docs.md](dev-docs.md), `CLAUDE.md`, `docs/toolchain.md` and `docs/pitfalls.md`. These docs will be folded into a base `README.md` in a later milestone (see M4 in `milestones.md`).
+User-facing notes for people building `.odinproj` projects. The overview and install entry point is the root [README.md](../README.md). Developer material lives in [dev-docs.md](dev-docs.md), `CLAUDE.md`, `docs/toolchain.md` and `docs/pitfalls.md`.
 
-Status: command-line builds work (M3). The sections below describe what exists today and are extended as milestones land.
+Status: `.odinproj` projects open in a solution, build from VS and the command line, and show errors in the Error List (M3, M4). F5 and breakpoints arrive with M5, references with M6.
 
 ## Installing the extension in Visual Studio
 
 This installs a personal build into your normal Visual Studio 2026 (18.x) from a clone; there is no published release. To develop the extension in the separate Experimental instance instead, see [dev-docs.md](dev-docs.md).
 
-What you get today: `.odin` syntax colorization, language-server diagnostics on save (squiggles and Error List) from the bundled `ols`, and command-line builds of `.odinproj` files. Opening an `.odinproj` in a solution, the Configuration Manager and F5 inside VS arrive with M4 and M5.
+What you get today: `.odin` syntax colorization, language-server diagnostics on save (squiggles and Error List) from the bundled `ols`, `.odinproj` projects in a solution, and command-line builds. Odin projects in a solution (tree, Build/Clean/Rebuild, Configuration Manager, File > New) work from M4; F5 arrives with M5.
 
 1. Install the prerequisites: Visual Studio 2026 with the *Visual Studio extension development* workload, the .NET SDK 10, and Odin (at `C:\Program Files\Odin\odin\dist\odin.exe` or on `PATH`). `ols` is bundled.
 2. Clone and build the extension from a PowerShell prompt in the clone:
@@ -115,6 +115,14 @@ To make a custom configuration appear in VS, declare literal items in the `.odin
 
 The values must be plain text: VS reads them without evaluating `$(...)` (see `docs/pitfalls.md`). A solution configuration of the same name still has to be created in the Configuration Manager (or the `.sln`), and each project mapped to it; a project that does not declare that name is skipped when that solution configuration builds.
 
+## Projects in Visual Studio
+
+- **Open or add a project:** open a `.sln`/`.slnx` that lists `.odinproj` files, or use *File > Open > Project/Solution* on an `.odinproj`; *Add > Existing Project* also works. The project node lists the files its `OdinCompile` items name (a glob such as `src\**\*.odin` tracks files added or removed on disk).
+- **Create one:** *File > New > Project > Odin Executable* (or *Add > New Project* in a solution) generates `<Name>.odinproj` and `src\main.odin`. The generated project names `Odin.Sdk` with the version this build packs; it only restores once NuGet can reach the package, see [Getting `Odin.Sdk` for a project](#getting-odinsdk-for-a-project). *Add > New Item > Odin File* adds a source file.
+- **Build:** *Build > Build/Rebuild/Clean Solution* (or the project entries) run the same `odin build` command as the command line; errors and warnings go to the Error List and double-click opens the line. The toolbar and *Build > Configuration Manager* switch Debug/Release x64 for every project in the solution; output goes to `bin\<Configuration>`.
+- **If a different "Odin CPS Spike" extension is installed** (an early development build) uninstall it; it registers the same project type.
+- **Warnings about the toolchain:** when a solution holds an `.odinproj`, an info bar at the top of the window appears if `odin.exe` is not found, the bundled `ols.exe` is missing, or the installed odin is not the version the bundled ols was built for (messages say what to fix; *Open log* opens `%LOCALAPPDATA%\OdinVS\odinvs.log`). It is shown once per Visual Studio session.
+
 ## Diagnostics
 
 Build output uses MSBuild's canonical format, so Visual Studio shows entries in the Error List and double-click navigates to the line:
@@ -136,6 +144,7 @@ Odin does not give its errors codes, so odin-vs assigns them.
 
 Notes:
 - A syntax error stops Odin before semantic checking, so a build shows only syntax errors until they are fixed.
+- In the editor, ols diagnostics with warning severity (such as a call to a `@(deprecated)` procedure) draw the editor's warning squiggle, which Visual Studio colours green by default; errors are red.
 - Column numbers are 1-based; Odin's column 0 at end of file is shown as 1.
 
 **Keep this table current.** Adding, renaming or removing any error, warning or other diagnostic code means updating it (and the constants in `src/OdinVS.Core/OdinBuildTask.cs` or the ols code mapper).

@@ -70,6 +70,29 @@ public sealed class OlsProtocolTests
         Assert.IsNotNull(published, "no non-empty publishDiagnostics after didSave: " + string.Join(" | ", client.Stderr));
     }
 
+    // LSP DiagnosticSeverity: 1 error, 2 warning. A deprecated call is an odin warning (ODIN0002 in builds); it must reach VS as
+    // a warning so the editor draws a yellow squiggle.
+    [TestMethod]
+    public void DeprecatedCallIsPublishedWithWarningSeverity()
+    {
+        string workspace = Directory.CreateTempSubdirectory("odinvs-ws").FullName;
+        File.Copy(Path.Combine(RepoPaths.Root, "tests", "samples", "WarnOdin", "src", "main.odin"), Path.Combine(workspace, "main.odin"));
+        JsonObject options = new()
+        {
+            ["odin_command"] = OdinPath,
+            ["checker_path"] = new JsonArray(workspace),
+            ["collections"] = new JsonArray(),
+        };
+
+        using OlsClient client = OlsClient.Start(OlsPath, Path.GetTempPath());
+        JsonNode? published = Run(client, workspace, rootUri: null, "broken", options);
+
+        Assert.IsNotNull(published, "no non-empty publishDiagnostics after didSave: " + string.Join(" | ", client.Stderr));
+        JsonArray diagnostics = published["params"]!["diagnostics"]!.AsArray();
+        Console.WriteLine("diagnostics: " + diagnostics.ToJsonString());
+        Assert.AreEqual(2, (int)diagnostics[0]!["severity"]!, "deprecation should be a warning: " + diagnostics.ToJsonString());
+    }
+
     [TestMethod]
     public void DefaultConfigViaInitializationOptions_LooseFileGetsDiagnostics()
     {

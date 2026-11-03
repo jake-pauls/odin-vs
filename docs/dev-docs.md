@@ -56,7 +56,8 @@ Requires step 2 (the samples restore `Odin.Sdk` through `tests/samples/nuget.con
 ## Layout
 | Path | Purpose |
 |---|---|
-| `src/OdinVS` | The VSIX package (grammar, bundled ols, pkgdef) |
+| `src/OdinVS` | The VSIX package (grammar, bundled ols, pkgdef with the `.odinproj` project-type registration, project and item templates) |
+| `src/OdinVS.ProjectSystem` | The OdinVS package: tool-warning info bar, shown when the OdinProject UI context activates (CPS itself is Visual Studio's) |
 | `src/OdinVS.LanguageServer` | LSP client for ols |
 | `src/OdinVS.Core` | Logic with no VS references (error parser, argument builder, the `OdinBuild` task) |
 | `src/OdinVS.Build` | Source of the `Odin.Sdk` NuGet package |
