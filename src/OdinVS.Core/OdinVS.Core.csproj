@@ -11,4 +11,8 @@
     <InternalsVisibleTo Include="OdinVS.Core.Tests" />
     <InternalsVisibleTo Include="OdinVS.LanguageServer" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Compile-only: the OdinBuild task runs inside the host MSBuild, which supplies these assemblies. -->
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.11.0" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
 </Project>

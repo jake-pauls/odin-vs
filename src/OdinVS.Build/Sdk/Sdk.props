@@ -1,0 +1,10 @@
+<Project>
+  <!-- Defaults only, set when the project has not; same pattern as Microsoft.NET.Sdk (Configurations=Debug;Release).
+       Which files compile is the project's decision: .odinproj files list their own OdinCompile items. -->
+  <PropertyGroup>
+    <Configurations Condition="'$(Configurations)' == ''">Debug;Release</Configurations>
+    <Platforms Condition="'$(Platforms)' == ''">x64</Platforms>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+  </PropertyGroup>
+</Project>

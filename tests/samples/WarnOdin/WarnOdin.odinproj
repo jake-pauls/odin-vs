@@ -1,0 +1,5 @@
+<Project Sdk="Odin.Sdk/0.3.3-local">
+  <ItemGroup>
+    <OdinCompile Include="src\**\*.odin" />
+  </ItemGroup>
+</Project>

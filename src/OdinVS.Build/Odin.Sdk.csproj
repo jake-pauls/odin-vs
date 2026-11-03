@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Packs the Odin MSBuild SDK (Sdk.props, Sdk.targets, CPS rules, and the OdinVS.Core task assembly).
+       LOCAL ONLY: the .nupkg is built into the git-ignored nuget/ for private testing and must never be pushed to nuget.org or
+       any other feed. The "-local" version suffix and the metadata below exist so nobody mistakes it for a release. Pack with scripts/pack-sdk.ps1. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>Odin.Sdk</PackageId>
+    <Version>0.3.3-local</Version>
+    <PackageType>MSBuildSdk</PackageType>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <NoWarn>NU5128;NU5100;CS2008;CS8021</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <Title>Odin.Sdk (LOCAL ONLY - DO NOT PUBLISH)</Title>
+    <Description>LOCAL ONLY - DO NOT PUBLISH. Private development build of the odin-vs MSBuild SDK. Not a release; do not push to nuget.org or any shared feed.</Description>
+    <Authors>odin-vs (private)</Authors>
+    <Copyright>Private, not licensed for redistribution.</Copyright>
+    <PackageTags>LOCAL-ONLY;DO-NOT-PUBLISH;private</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression></PackageLicenseExpression>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\nuget\</PackageOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Builds the task assembly first; the DLL itself is packed by path below, not referenced. -->
+    <ProjectReference Include="..\OdinVS.Core\OdinVS.Core.csproj" ReferenceOutputAssembly="false" />
+    <None Include="Sdk\**\*" Pack="true" PackagePath="Sdk\" />
+    <None Include="..\OdinVS.Core\bin\$(Configuration)\netstandard2.0\OdinVS.Core.dll" Pack="true" PackagePath="Sdk\tools\" Visible="false" />
+    <None Include="PACKAGE-README.md" Pack="true" PackagePath="README.md" />
+  </ItemGroup>
+  <Target Name="WarnLocalOnly" AfterTargets="Pack">
+    <Warning Code="ODINPKG1" Text="Odin.Sdk $(Version) is LOCAL ONLY. Do not push it to nuget.org or any shared feed." />
+  </Target>
+</Project>

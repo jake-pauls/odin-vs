@@ -1,0 +1,31 @@
+{
+	"error_count": 2,
+	"errors": [
+		{
+			"type": "error",
+			"pos": {
+				"file": "D:/Projects/Vibe/odin-vs/tests/samples/BrokenOdin/src/main.odin",
+				"offset": 60,
+				"line": 6,
+				"column": 11,
+				"end_column": 17
+			},
+			"msgs": [
+				"Cannot convert '\"text\"' to 'int' from 'untyped string', got \"text\""
+			]
+		},
+		{
+			"type": "error",
+			"pos": {
+				"file": "D:/Projects/Vibe/odin-vs/tests/samples/BrokenOdin/src/main.odin",
+				"offset": 80,
+				"line": 7,
+				"column": 14,
+				"end_column": 15
+			},
+			"msgs": [
+				"Undeclared name: y"
+			]
+		}
+	]
+}
