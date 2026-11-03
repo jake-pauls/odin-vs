@@ -8,6 +8,8 @@ Project("{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}") = "BrokenOdin", "BrokenOdin\Br
 EndProject
 Project("{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}") = "WarnOdin", "WarnOdin\WarnOdin.odinproj", "{A1111111-0000-4000-8000-000000000003}"
 EndProject
+Project("{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}") = "TestApp", "TestApp\TestApp.odinproj", "{6B532E0F-D6DA-4ED3-81D4-889A7B67CD3C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -26,6 +28,10 @@ Global
 		{A1111111-0000-4000-8000-000000000003}.Debug|x64.Build.0 = Debug|x64
 		{A1111111-0000-4000-8000-000000000003}.Release|x64.ActiveCfg = Release|x64
 		{A1111111-0000-4000-8000-000000000003}.Release|x64.Build.0 = Release|x64
+		{6B532E0F-D6DA-4ED3-81D4-889A7B67CD3C}.Debug|x64.ActiveCfg = Debug|x64
+		{6B532E0F-D6DA-4ED3-81D4-889A7B67CD3C}.Debug|x64.Build.0 = Debug|x64
+		{6B532E0F-D6DA-4ED3-81D4-889A7B67CD3C}.Release|x64.ActiveCfg = Release|x64
+		{6B532E0F-D6DA-4ED3-81D4-889A7B67CD3C}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

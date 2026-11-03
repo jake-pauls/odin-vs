@@ -1,0 +1,8 @@
+<Project Sdk="Odin.Sdk/0.3.3-local">
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>6b532e0f-d6da-4ed3-81d4-889a7b67cd3c</ProjectGuid>
+  </PropertyGroup>
+  <ItemGroup>
+    <OdinCompile Include="src\**\*.odin" />
+  </ItemGroup>
+</Project>
