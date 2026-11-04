@@ -29,7 +29,8 @@
       <Private>false</Private>
     </Reference>
     <Reference Include="System.ComponentModel.Composition" />
-  </ItemGroup>  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\OdinVS.Core\OdinVS.Core.csproj" />
     <ProjectReference Include="..\OdinVS.LanguageServer\OdinVS.LanguageServer.csproj" />
   </ItemGroup>

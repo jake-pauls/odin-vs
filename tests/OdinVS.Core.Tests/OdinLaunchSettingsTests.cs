@@ -34,4 +34,29 @@ public sealed class OdinLaunchSettingsTests
 
         StringAssert.Contains(ex.Message, "TargetPath");
     }
+    [TestMethod]
+    public void AbsolutePathsAreKept()
+    {
+        OdinLaunchSettings settings = OdinLaunchSettings.Resolve(@"D:\out\App.exe", @"E:\run", null, ProjectDirectory);
+
+        Assert.AreEqual(@"D:\out\App.exe", settings.Executable);
+        Assert.AreEqual(@"E:\run", settings.WorkingDirectory);
+    }
+
+    [TestMethod]
+    public void WhitespaceWorkingDirectoryFallsBackToTheProjectDirectory()
+    {
+        OdinLaunchSettings settings = OdinLaunchSettings.Resolve(@"bin\App.exe", "  ", null, ProjectDirectory);
+
+        Assert.AreEqual(ProjectDirectory, settings.WorkingDirectory);
+    }
+
+    [TestMethod]
+    public void ParentSegmentsAreNormalized()
+    {
+        OdinLaunchSettings settings = OdinLaunchSettings.Resolve(@"..\out\App.exe", @"..\shared", null, ProjectDirectory);
+
+        Assert.AreEqual(@"C:\work\out\App.exe", settings.Executable);
+        Assert.AreEqual(@"C:\work\shared", settings.WorkingDirectory);
+    }
 }

@@ -41,4 +41,4 @@ Checked in Exp 18.11 with `tests/samples/DebugOdin`: `odin build -debug` PDBs le
 - `DebugOdin` console windows close at once on Ctrl+F5 because the program exits; that is expected, not a failed launch.
 
 ## Editing files with CRLF line endings from scripts
-Working-copy files are CRLF (autocrlf), so a PowerShell `String.Replace` with a `` `n `` multi-line search string matches nothing and changes nothing silently. Check `$t.Contains($old)` (throw if not) and use the file's own newline, as `scripts` and the milestone edits do. Also: a replace of `Global` + newline in a `.sln` also hit `EndGlobal`; anchor on the whole line.
+Working-copy files are CRLF (autocrlf), so a PowerShell `String.Replace` with a `` `n `` multi-line search string matches nothing and changes nothing silently. Check `$t.Contains($old)` (throw if not) and use the file's own newline. Also: a replace of `Global` + newline in a `.sln` also hit `EndGlobal`; anchor on the whole line.

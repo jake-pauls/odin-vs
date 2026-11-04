@@ -176,12 +176,13 @@ main
 - **Scripted edits of CRLF files:** guard every `String.Replace` with a `Contains` check that throws; see `docs/pitfalls.md`. Match the file's own newline.
 - **`git fetch` and `git push` use `$env:GIT_SSH_COMMAND = 'C:/Windows/System32/OpenSSH/ssh.exe'` (rule 9).** A fetch without it fails with `Permission denied (publickey)`.
 - **Odin and debugger facts** (type names in the PDB, what natvis can and cannot match, the `DebugOdin` sample) are in `docs/pitfalls.md`; the milestone for the slice and dynamic-array visualizer prototype is M5.5 in `docs/milestones.md` (branch `m5.5/<slug>`, between M5 and M6).
+
 ## Architecture additions
 ```
 src/OdinVS.Core/            # netstandard2.0, no VS refs: error-output parser, odin arg builder,
                             # ols.json generator, version-compat check, .odinproj reader
 tests/OdinVS.Core.Tests/    # MSTest
-src/OdinVS.ProjectSystem/   # net472 VS package: tool-warning info bar (OdinProject UI context). The CPS project type itself is registered in src/OdinVS/odin.pkgdef
+src/OdinVS.ProjectSystem/   # net472 VS package: tool-warning info bar (OdinProject UI context) and `OdinDebugLaunchProvider` (F5/Ctrl+F5). The CPS project type itself is registered in src/OdinVS/odin.pkgdef
 src/OdinVS.Build/           # Odin.Sdk package source: Sdk.props/targets, CPS rules, task DLL from Core. LOCAL ONLY, see nuget/README.md
 nuget/                       # local feed written by scripts\pack-sdk.ps1; the *.nupkg is git-ignored (never commit or publish), only its README is tracked
 tests/OdinVS.Build.Tests/   # MSTest tier 3: packs the SDK to a scratch feed, runs `dotnet msbuild` on copies of tests/samples with real odin
