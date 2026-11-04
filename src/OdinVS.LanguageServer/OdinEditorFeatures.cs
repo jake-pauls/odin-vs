@@ -1,5 +1,6 @@
 using System.ComponentModel.Composition;
 using Microsoft.VisualStudio.Commanding;
+using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.BraceCompletion;
 using Microsoft.VisualStudio.Text.Editor;
 using Microsoft.VisualStudio.Text.Editor.Commanding.Commands;
@@ -37,6 +38,7 @@ public sealed class OdinBraceCompletionEnabler : IWpfTextViewCreationListener
     public void TextViewCreated(IWpfTextView textView)
     {
         Enable(textView);
+        // Not unsubscribed on purpose: the options bag belongs to the view, so the handler goes away with it.
         textView.Options.OptionChanged += (_, e) =>
         {
             if (e.OptionId == DefaultTextViewOptions.BraceCompletionEnabledOptionId.Name)
@@ -85,8 +87,8 @@ public sealed class OdinNumericLiteralGuard(IEditorOperationsFactoryService edit
 
     private static bool StartsInsideNumber(TypeCharCommandArgs args)
     {
-        Microsoft.VisualStudio.Text.SnapshotPoint caret = args.TextView.Caret.Position.BufferPosition;
-        Microsoft.VisualStudio.Text.ITextSnapshotLine line = caret.GetContainingLine();
+        SnapshotPoint caret = args.TextView.Caret.Position.BufferPosition;
+        ITextSnapshotLine line = caret.GetContainingLine();
         string before = caret.Snapshot.GetText(line.Start.Position, caret.Position - line.Start.Position);
         return OdinNumericLiteral.ContinuesNumber(before, args.TypedChar);
     }
