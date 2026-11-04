@@ -31,6 +31,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
       <VSIXSubPath>ols\builtin\</VSIXSubPath>
     </Content>
+    <Content Include="Visualizers\odin.natvis">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>Visualizers\</VSIXSubPath>
+    </Content>
     <Content Include="odin.pkgdef">
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

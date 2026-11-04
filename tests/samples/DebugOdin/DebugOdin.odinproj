@@ -1,0 +1,8 @@
+<Project Sdk="Odin.Sdk/0.3.3-local">
+  <PropertyGroup>
+    <LocalDebuggerCommandArguments>first "second arg"</LocalDebuggerCommandArguments>
+  </PropertyGroup>
+  <ItemGroup>
+    <OdinCompile Include="src\**\*.odin" />
+  </ItemGroup>
+</Project>
