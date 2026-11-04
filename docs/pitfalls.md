@@ -42,3 +42,6 @@ Checked in Exp 18.11 with `tests/samples/DebugOdin`: `odin build -debug` PDBs le
 
 ## Editing files with CRLF line endings from scripts
 Working-copy files are CRLF (autocrlf), so a PowerShell `String.Replace` with a `` `n `` multi-line search string matches nothing and changes nothing silently. Check `$t.Contains($old)` (throw if not) and use the file's own newline. Also: a replace of `Global` + newline in a `.sln` also hit `EndGlobal`; anchor on the whole line.
+
+## Auto-close needs the view option, a numeric literal needs a guard (M5, 2026-11-03)
+VS keeps brace completion off for TextMate-only languages (`BraceCompletion/Enabled` is false on the view), so neither `language-configuration.json` nor a provider alone closes anything. `src/OdinVS.LanguageServer/OdinEditorFeatures.cs` holds the three pieces: `OdinBraceCompletionEnabler` (turns the option on and keeps it on), `OdinBraceCompletionProvider` (the pairs) and `OdinNumericLiteralGuard` (no completion list inside `1.5f`). Do not delete the enabler as dead code. Details and the diagnostic method are in the `visual-studio-2026-extensions` skill (pitfalls).

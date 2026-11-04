@@ -6,7 +6,7 @@ import "core:fmt"
 // after "type:". Record what happened in docs/milestones.md. Do not save edits to this file.
 //
 // wordPattern / completion span (ols completions; the replaced span comes from ols's textEdit):
-//   W1  line 21: type "pri" after "fmt." -> Tab      expect "fmt.println", nothing left over before "fmt."
+//   W1  line 21: type "pri" after "fmt." -> Tab      expect the top item (print or println), nothing left over before "fmt."
 //   W2  line 22: type "." after "fmt"                expect a member list (println, ...) and no stray "fmt" replaced
 //   W3  line 23: type "f" at the end of "1.5"        expect no completion list, or one that does not replace "1.5"
 //   W4  line 24: type "ab" after "my_" -> Ctrl+Space expect the span to cover all of "my_ab", not just "ab"
