@@ -1,6 +1,6 @@
 namespace OdinVS.Core;
 
-internal static class OlsDiagnosticCode
+public static class OlsDiagnosticCode
 {
     public const string Prefix = "ols";
 

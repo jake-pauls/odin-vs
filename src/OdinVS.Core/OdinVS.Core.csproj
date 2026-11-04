@@ -9,7 +9,6 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="OdinVS.Core.Tests" />
-    <InternalsVisibleTo Include="OdinVS.LanguageServer" />
   </ItemGroup>
   <ItemGroup>
     <!-- Compile-only: the OdinBuild task runs inside the host MSBuild, which supplies these assemblies. -->
