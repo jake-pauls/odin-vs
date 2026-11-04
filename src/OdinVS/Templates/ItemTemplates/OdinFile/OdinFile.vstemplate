@@ -1,0 +1,13 @@
+<VSTemplate Version="3.0.0" Type="Item" xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
+  <TemplateData>
+    <Name>Odin File</Name>
+    <Description>An empty Odin source file.</Description>
+    <ProjectType>Odin</ProjectType>
+    <SortOrder>10</SortOrder>
+    <DefaultName>file.odin</DefaultName>
+    <ProvideDefaultName>true</ProvideDefaultName>
+  </TemplateData>
+  <TemplateContent>
+    <ProjectItem ReplaceParameters="true" TargetFileName="$fileinputname$.odin">file.odin</ProjectItem>
+  </TemplateContent>
+</VSTemplate>

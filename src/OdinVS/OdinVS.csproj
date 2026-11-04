@@ -18,6 +18,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\OdinVS.LanguageServer\OdinVS.LanguageServer.csproj" />
+    <ProjectReference Include="..\OdinVS.ProjectSystem\OdinVS.ProjectSystem.csproj" />
     <ProjectReference Include="..\OdinVS.Core\OdinVS.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
@@ -43,6 +44,14 @@
     </Content>
     <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md">
       <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Templates\ProjectTemplates\**\*">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>ProjectTemplates\%(RecursiveDir)</VSIXSubPath>
+    </Content>
+    <Content Include="Templates\ItemTemplates\**\*">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>ItemTemplates\%(RecursiveDir)</VSIXSubPath>
     </Content>
     <None Include="Grammars\README.md" />
     <None Include="ols\ols.pin" />

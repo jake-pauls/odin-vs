@@ -1,6 +1,6 @@
 namespace OdinVS.Core;
 
-internal sealed class ToolLocator(Func<string, bool> fileExists)
+public sealed class ToolLocator(Func<string, bool> fileExists)
 {
     // Relative PATH entries (".", "bin") are skipped so a tool is never picked up from the current directory.
     public string? Find(string fileName, IEnumerable<string> searchDirectories, IEnumerable<string> fallbackPaths)

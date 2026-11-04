@@ -139,7 +139,7 @@ LSP servers normally own diagnostics and push them (`textDocument/publishDiagnos
 The user-facing table of diagnostic codes (`ODIN0001`, `ODIN0002`, `ODIN0100`, `ODIN0101`, the `ols.*` codes) is in [docs/user-guide.md](docs/user-guide.md). When you add, change or remove any error, warning or other diagnostic, update that table in the same change, and add a tier-1 or tier-3 test for it. The `ODINnnnn` numbering is the user's accepted scheme (2026-11-01): compile errors/warnings 000x, build-process failures 01xx.
 
 ### Project properties
-The list of properties and items an `.odinproj` supports (name, default, meaning) is the "Project properties and items" section of [docs/user-guide.md](docs/user-guide.md) (it will move to the base `README.md` when docs are consolidated; keep it wherever it lives). Whenever you add, rename, remove or change the default of a project property or item, or wrap a new one, update that list in the same change, and add a tier-3 test. Scope (user, 2026-11-01): wrap only settings that configure the project itself (configurations, output, names, paths); `odin` compiler options go through `OdinExtraArgs`, not new properties. Project-level settings are defaults a `.odinproj` can override.
+The list of properties and items an `.odinproj` supports (name, default, meaning) is the "Project properties and items" section of [docs/user-guide.md](docs/user-guide.md) (the root `README.md` links to it; keep it where it lives). Whenever you add, rename, remove or change the default of a project property or item, or wrap a new one, update that list in the same change, and add a tier-3 test. Scope (user, 2026-11-01): wrap only settings that configure the project itself (configurations, output, names, paths); `odin` compiler options go through `OdinExtraArgs`, not new properties. Project-level settings are defaults a `.odinproj` can override.
 
 ### Process (from user-level rules)
 Ask before dependency add/upgrade, network access beyond registries, file deletion, or running anything not defined by project commands. Branches, commits and PRs follow "Git workflow" below. Push only to `git@github.com:jake-pauls/`.
@@ -170,6 +170,7 @@ main
 src/OdinVS.Core/            # netstandard2.0, no VS refs: error-output parser, odin arg builder,
                             # ols.json generator, version-compat check, .odinproj reader
 tests/OdinVS.Core.Tests/    # MSTest
+src/OdinVS.ProjectSystem/   # net472 VS package: tool-warning info bar (OdinProject UI context). The CPS project type itself is registered in src/OdinVS/odin.pkgdef
 src/OdinVS.Build/           # Odin.Sdk package source: Sdk.props/targets, CPS rules, task DLL from Core. LOCAL ONLY, see nuget/README.md
 nuget/                       # local feed written by scripts\pack-sdk.ps1; the *.nupkg is git-ignored (never commit or publish), only its README is tracked
 tests/OdinVS.Build.Tests/   # MSTest tier 3: packs the SDK to a scratch feed, runs `dotnet msbuild` on copies of tests/samples with real odin

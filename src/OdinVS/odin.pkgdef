@@ -3,3 +3,38 @@
 
 [$RootKey$\TextMate\LanguageConfiguration\GrammarMapping]
 "source.odin"="$PackageFolder$\Grammars\language-configuration.json"
+
+; .odinproj as a CPS-based project type (decided 2026-10-30, see CLAUDE.md "Project system decision"). Modeled on VS's own
+; msbuildproj.pkgdef; ProjectFactoryPackage is what makes VS accept a new GUID (spikes/cps-feasibility/FINDINGS.md, B1).
+; Uninstall the spike extension "Odin CPS Spike" first: it registers this same key.
+[$RootKey$\Projects\{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}]
+@="ProjectFactory"
+"DisplayName"="Odin Project"
+"DisplayProjectFileExtensions"="Odin Project Files (*.odinproj);*.odinproj"
+"ProjectFactoryPackage"="{3347BEE8-D7A1-4082-95E4-38A439553CC2}"
+"Package"="{3347BEE8-D7A1-4082-95E4-38A439553CC2}"
+"Language(VsTemplate)"="Odin"
+"DefaultProjectExtension"="odinproj"
+"PossibleProjectExtensions"="odinproj"
+"DisableAsynchronousSolutionLoad"=dword:00000000
+"DisableAsynchronousProjectTreeLoad"=dword:00000001
+"PrefetchFactory"="{3998970A-AEE1-4216-A54F-0A99D20A1FAB}"
+"Capabilities"="HandlesOwnReload;OpenProjectFile;EnableOnDemandExcludedFolderLoading"
+
+; Our package (OdinVS.ProjectSystem.OdinVSPackage): shows the odin/ols warnings once a solution holds an .odinproj.
+[$RootKey$\Packages\{2e4a9b0d-6c1f-4b8e-9d3a-7f5c0e1b2a64}]
+@="OdinVSPackage"
+"InprocServer32"="$WinDir$\SYSTEM32\MSCOREE.DLL"
+"Class"="OdinVS.ProjectSystem.OdinVSPackage"
+"CodeBase"="$PackageFolder$\OdinVS.ProjectSystem.dll"
+"AllowsBackgroundLoad"=dword:00000001
+
+; UI context active while any project in the solution has the OdinProject capability (declared by Odin.Sdk).
+[$RootKey$\UIContextRules\{9c3d7e21-4a5b-4f60-8e19-3b6a1d0c5f72}]
+"Expression"="Odin"
+"Delay"=dword:00000000
+"Name"="OdinProject"
+"Odin"="SolutionHasProjectCapability:OdinProject"
+
+[$RootKey$\AutoLoadPackages\{9c3d7e21-4a5b-4f60-8e19-3b6a1d0c5f72}]
+"{2e4a9b0d-6c1f-4b8e-9d3a-7f5c0e1b2a64}"=dword:00000002
