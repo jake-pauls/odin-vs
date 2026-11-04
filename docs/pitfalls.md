@@ -33,3 +33,12 @@ Found 2026-11-02 in Exp 18.11 while registering `OdinVSPackage` by hand in `src/
 - The background-load value on `Packages\{guid}` is `AllowsBackgroundLoad`, not `AllowsBackgroundLoading` (the attribute property is spelled with "ing", the registry value is not). With the wrong name, an autoload request was logged in the activity log as "ignored because package does not support background loading".
 - UI context rules live under `$RootKey$\UIContextRules\{guid}`, not `UIContext`. With the wrong key nothing was reported at all and the context never activated.
 To see what VS did with a package, start Exp with `devenv /rootSuffix Exp /log <file>` (never pass the .sln path: VS overwrites it), close Exp so the log is flushed, and search it for the package GUID. VS's own pkgdefs under `Common7\IDE\CommonExtensions` are the reference for key names.
+
+## Odin PDB types, natvis and what the debugger shows (M5, 2026-11-03)
+Checked in Exp 18.11 with `tests/samples/DebugOdin`: `odin build -debug` PDBs let the native engine bind breakpoints in `.odin` files and show Locals. Composite types keep Odin names (`string`, `[]int`, `[dynamic]string`, `runtime::Context`); scalars are CodeView built-ins (`int` is `__int64`, `u8` is `unsigned char`), and natvis cannot rename them, so Odin-style scalar names would need a debugger extension (not planned). `Raw_Slice`, `Raw_Dynamic_Array` and `Raw_String` exist in the PDB but variables are typed `[]T`.
+- `odin.natvis` covers `string` only. natvis rejects `[]int`, `[dynamic]string` and every pattern tried (`[]*`, `*]int`, `*[]int`, `*`) as `Invalid type name`, so slices and dynamic arrays show raw `data`/`len` and `data` expands to the first element. Workaround in Watch: `values.data,3`. The prototype for a real fix is the M5.5 milestone. VS-side detail is in the `visual-studio-2026-extensions` skill (pitfalls, "Debugging").
+- Dynamic array literals in samples need `#+feature dynamic-literals` at the top of the file.
+- `DebugOdin` console windows close at once on Ctrl+F5 because the program exits; that is expected, not a failed launch.
+
+## Editing files with CRLF line endings from scripts
+Working-copy files are CRLF (autocrlf), so a PowerShell `String.Replace` with a `` `n `` multi-line search string matches nothing and changes nothing silently. Check `$t.Contains($old)` (throw if not) and use the file's own newline, as `scripts` and the milestone edits do. Also: a replace of `Global` + newline in a `.sln` also hit `EndGlobal`; anchor on the whole line.
