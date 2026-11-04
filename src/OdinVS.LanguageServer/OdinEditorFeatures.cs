@@ -76,7 +76,7 @@ public sealed class OdinNumericLiteralGuard(IEditorOperationsFactoryService edit
 
     public void ExecuteCommand(TypeCharCommandArgs args, Action nextCommandHandler, CommandExecutionContext executionContext)
     {
-        if (!args.TextView.Selection.IsEmpty || !StartsInsideNumber(args))
+        if (!args.TextView.Selection.IsEmpty || args.TextView.GetMultiSelectionBroker().AllSelections.Count > 1 || !StartsInsideNumber(args))
         {
             nextCommandHandler();
             return;

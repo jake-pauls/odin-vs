@@ -28,6 +28,36 @@ public sealed class OdinLaunchSettingsTests
     }
 
     [TestMethod]
+    public void ValidateAcceptsExistingExecutableAndDirectory()
+    {
+        OdinLaunchSettings settings = OdinLaunchSettings.Resolve(@"bin\App.exe", null, null, ProjectDirectory);
+
+        Assert.IsNull(settings.Validate(_ => true, _ => true, "App"));
+    }
+
+    [TestMethod]
+    public void ValidateNamesAMissingExecutableFirst()
+    {
+        OdinLaunchSettings settings = OdinLaunchSettings.Resolve(@"bin\App.exe", @"run", null, ProjectDirectory);
+
+        string? message = settings.Validate(_ => false, _ => false, "App");
+
+        StringAssert.Contains(message, @"C:\work\App\bin\App.exe");
+        StringAssert.Contains(message, "TargetPath");
+    }
+
+    [TestMethod]
+    public void ValidateNamesAMissingWorkingDirectory()
+    {
+        OdinLaunchSettings settings = OdinLaunchSettings.Resolve(@"bin\App.exe", @"run", null, ProjectDirectory);
+
+        string? message = settings.Validate(_ => true, _ => false, "App");
+
+        StringAssert.Contains(message, @"C:\work\App\run");
+        StringAssert.Contains(message, "LocalDebuggerWorkingDirectory");
+    }
+
+    [TestMethod]
     public void EmptyTargetPathThrowsWithAHint()
     {
         InvalidOperationException ex = Assert.ThrowsExactly<InvalidOperationException>(() => OdinLaunchSettings.Resolve(" ", null, null, ProjectDirectory));

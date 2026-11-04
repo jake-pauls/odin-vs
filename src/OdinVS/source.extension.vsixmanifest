@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="OdinVS.3f8a6d1c-5b7e-4c92-a0d4-9e1b2c7f4a58" Version="0.4.7" Language="en-US" Publisher="jake-pauls" />
+    <Identity Id="OdinVS.3f8a6d1c-5b7e-4c92-a0d4-9e1b2c7f4a58" Version="0.4.8" Language="en-US" Publisher="jake-pauls" />
     <DisplayName>Odin for Visual Studio</DisplayName>
     <Description>Odin language support for Visual Studio 2026.</Description>
     <License>THIRD-PARTY-NOTICES.md</License>

@@ -38,41 +38,23 @@ public sealed class OdinDebugLaunchProvider : DebugLaunchProviderBase
             projectDirectory);
     }
 
-    // A bad path typed on the Debug page (or an empty TargetPath) must not escape into VS: log it and refuse to launch.
-    private static bool IsBadLaunchSetting(Exception ex) =>
-        ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException;
-
-    public override async Task<bool> CanLaunchAsync(DebugLaunchOptions launchOptions)
-    {
-        try
-        {
-            OdinLaunchSettings settings = await ResolveAsync();
-            if (!File.Exists(settings.Executable))
-            {
-                m_Log.Write($"F5: {settings.Executable} does not exist; build the project first (check its TargetPath if it builds elsewhere)");
-                return false;
-            }
-
-            if (!Directory.Exists(settings.WorkingDirectory))
-            {
-                m_Log.Write($"F5: working directory {settings.WorkingDirectory} does not exist; check LocalDebuggerWorkingDirectory");
-                return false;
-            }
-
-            return true;
-        }
-        catch (Exception ex) when (IsBadLaunchSetting(ex))
-        {
-            m_Log.Write($"F5 not possible: {ex.Message}; check TargetPath and the LocalDebugger* properties in the .odinproj");
-            return false;
-        }
-    }
+    // Like the C# project system (ProjectLaunchTargetsProvider): CanLaunchAsync always says yes, because VS has already built by
+    // the time it asks, and QueryDebugTargetsAsync throws with a message naming the missing executable or directory, which VS
+    // shows to the user. Refusing quietly would make F5 do nothing.
+    public override Task<bool> CanLaunchAsync(DebugLaunchOptions launchOptions) => Task.FromResult(true);
 
     public override async Task<IReadOnlyList<IDebugLaunchSettings>> QueryDebugTargetsAsync(DebugLaunchOptions launchOptions)
     {
+        string projectName = Path.GetFileNameWithoutExtension(m_ConfiguredProject.UnconfiguredProject.FullPath);
         try
         {
             OdinLaunchSettings settings = await ResolveAsync();
+            string? problem = settings.Validate(File.Exists, Directory.Exists, projectName);
+            if (problem is not null)
+            {
+                throw new InvalidOperationException(problem);
+            }
+
             m_Log.Write($"launch options={launchOptions} exe={settings.Executable} args='{settings.Arguments}' cwd={settings.WorkingDirectory}");
             DebugLaunchSettings launch = new(launchOptions)
             {
@@ -86,10 +68,17 @@ public sealed class OdinDebugLaunchProvider : DebugLaunchProviderBase
 
             return [launch];
         }
-        catch (Exception ex) when (IsBadLaunchSetting(ex))
+        catch (InvalidOperationException ex)
         {
-            m_Log.Write($"F5 launch failed: {ex.Message}; check TargetPath and the LocalDebugger* properties in the .odinproj");
-            return [];
+            m_Log.Write($"F5 not possible: {ex.Message}");
+            throw;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // A path typed on the Debug page that Windows cannot parse.
+            string message = $"The launch settings of project '{projectName}' are not valid: {ex.Message} Check TargetPath and the LocalDebugger* properties in the .odinproj.";
+            m_Log.Write($"F5 not possible: {message}");
+            throw new InvalidOperationException(message, ex);
         }
     }
 }
