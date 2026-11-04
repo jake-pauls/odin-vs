@@ -9,12 +9,12 @@ namespace OdinVS.LanguageServer;
 internal sealed record StartedOls(Process Process, string OdinPath, OlsSettings Settings);
 
 // Resolves odin and ols and starts ols with stdio piped. Returns null (after logging) when it cannot.
-internal sealed class OlsProcess(Log log)
+public sealed class OlsProcess(Log log)
 {
     // Lives for the VS process; the OS closes the handle on exit, which kills ols. Null if the job could not be created.
     private static readonly Lazy<KillOnCloseJob?> m_Job = new(CreateJob);
 
-    public StartedOls? Start()
+    internal StartedOls? Start()
     {
         string extensionDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
         ResolvedTools tools = new ToolResolver(new ToolLocator(File.Exists))

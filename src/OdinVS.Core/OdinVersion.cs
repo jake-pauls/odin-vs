@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace OdinVS.Core;
 
-internal readonly record struct OdinVersion(int Year, int Month)
+public readonly record struct OdinVersion(int Year, int Month)
 {
     private static readonly Regex m_Pattern = new(@"dev-([0-9]{4})-([0-9]{2})", RegexOptions.Compiled);
 

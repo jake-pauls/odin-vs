@@ -15,9 +15,6 @@
     <Reference Include="System.ComponentModel.Composition" />
   </ItemGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="OdinVS.ProjectSystem" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\OdinVS.Core\OdinVS.Core.csproj" />
   </ItemGroup>
 </Project>

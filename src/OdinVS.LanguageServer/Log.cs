@@ -1,6 +1,6 @@
 namespace OdinVS.LanguageServer;
 
-internal sealed class Log(string path)
+public sealed class Log(string path)
 {
     private readonly object m_Gate = new();
 

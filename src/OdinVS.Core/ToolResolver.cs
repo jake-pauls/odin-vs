@@ -1,8 +1,8 @@
 namespace OdinVS.Core;
 
-internal sealed record ResolvedTools(string? Ols, string? Odin, IReadOnlyList<string> Problems);
+public sealed record ResolvedTools(string? Ols, string? Odin, IReadOnlyList<string> Problems);
 
-internal sealed class ToolResolver(ToolLocator locator)
+public sealed class ToolResolver(ToolLocator locator)
 {
     public const string OdinFallback = @"C:\Program Files\Odin\odin\dist\odin.exe";
 
