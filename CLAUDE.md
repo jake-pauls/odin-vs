@@ -110,7 +110,7 @@ LSP servers normally own diagnostics and push them (`textDocument/publishDiagnos
 - Parameters take the most permissive type that works (`IEnumerable<T>` over `List<T>`, `ICollection<T>` for a counted set).
 - Use collection expressions (`[]`) wherever they are interchangeable with `new List<T>(...)` and similar.
 - No `async void`. If an event handler forces one, wrap the whole body in `try`/`catch`.
-- `internal` for anything not part of a public API. Exception: types VS requires to be public (packages, MEF/COM-visible types); note why in a one-line comment.
+- `internal` only for genuinely internal structures: implementation details that nothing outside the assembly should see. If another assembly in the solution actually uses a type or member, make it `public`; do not keep it `internal` and expose it with `InternalsVisibleTo`. `InternalsVisibleTo` is for test assemblies only (`OdinVS.Core.Tests`). Types VS requires to be public (packages, MEF/COM-visible types) are public too; note why in a one-line comment.
 - Primary constructors where an explicit constructor is not needed.
 - Private fields are prefixed `m_`, e.g. `m_MemberName` (instance and static; `const` stays PascalCase). Captured primary-constructor parameters are not members and keep their parameter name.
 - Properties are always PascalCase, e.g. `ExampleProperty`.
@@ -140,6 +140,9 @@ The user-facing table of diagnostic codes (`ODIN0001`, `ODIN0002`, `ODIN0100`, `
 
 ### Project properties
 The list of properties and items an `.odinproj` supports (name, default, meaning) is the "Project properties and items" section of [docs/user-guide.md](docs/user-guide.md) (the root `README.md` links to it; keep it where it lives). Whenever you add, rename, remove or change the default of a project property or item, or wrap a new one, update that list in the same change, and add a tier-3 test. Scope (user, 2026-11-01): wrap only settings that configure the project itself (configurations, output, names, paths); `odin` compiler options go through `OdinExtraArgs`, not new properties. Project-level settings are defaults a `.odinproj` can override.
+
+### Shell
+Use PowerShell for every command (git, `dotnet`, MSBuild, scripts), never the Bash tool. Git Bash mangles `/` switches (`MSBuild.exe /restore` becomes a path under `C:/Program Files/Git`), cannot see the Windows ssh-agent and breaks on backslash paths. Use `-restore`-style switches or PowerShell quoting for MSBuild. Keep BOMs out (see `docs/pitfalls.md`): commit with `git commit -m @'...'@` (single-quoted here-string) or `-F <file>`, write files with Edit/Write or `[IO.File]::WriteAllText` and a `UTF8Encoding($false)`, never `Set-Content`/`Out-File -Encoding utf8`, and check a new commit with `git cat-file commit <sha>`.
 
 ### Process (from user-level rules)
 Ask before dependency add/upgrade, network access beyond registries, file deletion, or running anything not defined by project commands. Branches, commits and PRs follow "Git workflow" below. Push only to `git@github.com:jake-pauls/`.

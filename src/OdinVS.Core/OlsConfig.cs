@@ -2,7 +2,7 @@ using System.Text;
 
 namespace OdinVS.Core;
 
-internal static class OlsConfig
+public static class OlsConfig
 {
     public static string Generate(OlsSettings settings)
     {
