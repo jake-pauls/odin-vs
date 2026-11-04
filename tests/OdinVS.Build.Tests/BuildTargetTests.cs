@@ -223,6 +223,25 @@ public sealed class BuildTargetTests
         Assert.IsFalse(File.Exists(Exe(directory, "Debug", "pdb")), "OdinDebug=false must not emit a PDB");
     }
 
+    // The F5 provider (OdinDebugLaunchProvider) reads these evaluated values; DebuggerFlavor must equal its [ExportDebugger] name.
+    [TestMethod]
+    public void DebuggerPropertiesHaveDefaultsAndCanBeOverridden()
+    {
+        string defaults = MsBuildSandbox.Instance.CopySample("HelloOdin");
+        MsBuildResult defaultResult = MsBuildSandbox.Instance.GetProperties(defaults, "HelloOdin.odinproj", "DebuggerFlavor", "LocalDebuggerWorkingDirectory", "LocalDebuggerCommandArguments", "TargetPath");
+        Assert.AreEqual(0, defaultResult.ExitCode, defaultResult.Output);
+        StringAssert.Contains(defaultResult.Output, "\"DebuggerFlavor\": \"OdinDebugger\"");
+        StringAssert.Contains(defaultResult.Output, "\"LocalDebuggerCommandArguments\": \"\"");
+        StringAssert.Contains(defaultResult.Output, "\"LocalDebuggerWorkingDirectory\": " + System.Text.Json.JsonSerializer.Serialize(defaults));
+        StringAssert.Contains(defaultResult.Output, "\"TargetPath\": " + System.Text.Json.JsonSerializer.Serialize(Exe(defaults, "Debug")));
+
+        string overridden = CopySampleWith("HelloOdin", @"<PropertyGroup><LocalDebuggerCommandArguments>one ""two words""</LocalDebuggerCommandArguments><LocalDebuggerWorkingDirectory>run</LocalDebuggerWorkingDirectory></PropertyGroup>");
+        MsBuildResult overrideResult = MsBuildSandbox.Instance.GetProperties(overridden, "HelloOdin.odinproj", "LocalDebuggerWorkingDirectory", "LocalDebuggerCommandArguments");
+        Assert.AreEqual(0, overrideResult.ExitCode, overrideResult.Output);
+        StringAssert.Contains(overrideResult.Output, "one \\u0022two words\\u0022"); // msbuild writes quotes as \u0022 in JSON
+        StringAssert.Contains(overrideResult.Output, "\"LocalDebuggerWorkingDirectory\": \"run\"");
+    }
+
     [TestMethod]
     public void MissingPdbTriggersARebuildInDebug()
     {

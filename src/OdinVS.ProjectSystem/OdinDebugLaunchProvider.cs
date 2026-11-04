@@ -38,40 +38,58 @@ public sealed class OdinDebugLaunchProvider : DebugLaunchProviderBase
             projectDirectory);
     }
 
+    // A bad path typed on the Debug page (or an empty TargetPath) must not escape into VS: log it and refuse to launch.
+    private static bool IsBadLaunchSetting(Exception ex) =>
+        ex is InvalidOperationException or ArgumentException or NotSupportedException or PathTooLongException;
+
     public override async Task<bool> CanLaunchAsync(DebugLaunchOptions launchOptions)
     {
         try
         {
             OdinLaunchSettings settings = await ResolveAsync();
-            bool exists = File.Exists(settings.Executable);
-            if (!exists)
+            if (!File.Exists(settings.Executable))
             {
                 m_Log.Write($"F5: {settings.Executable} does not exist; build the project first (check its TargetPath if it builds elsewhere)");
+                return false;
             }
 
-            return exists;
+            if (!Directory.Exists(settings.WorkingDirectory))
+            {
+                m_Log.Write($"F5: working directory {settings.WorkingDirectory} does not exist; check LocalDebuggerWorkingDirectory");
+                return false;
+            }
+
+            return true;
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (IsBadLaunchSetting(ex))
         {
-            m_Log.Write($"F5 not possible: {ex.Message}");
+            m_Log.Write($"F5 not possible: {ex.Message}; check TargetPath and the LocalDebugger* properties in the .odinproj");
             return false;
         }
     }
 
     public override async Task<IReadOnlyList<IDebugLaunchSettings>> QueryDebugTargetsAsync(DebugLaunchOptions launchOptions)
     {
-        OdinLaunchSettings settings = await ResolveAsync();
-        m_Log.Write($"launch options={launchOptions} exe={settings.Executable} args='{settings.Arguments}' cwd={settings.WorkingDirectory}");
-        DebugLaunchSettings launch = new(launchOptions)
+        try
         {
-            Executable = settings.Executable,
-            Arguments = settings.Arguments,
-            CurrentDirectory = settings.WorkingDirectory,
-            LaunchOperation = DebugLaunchOperation.CreateProcess,
-            LaunchDebugEngineGuid = s_NativeEngine,
-            Project = VsHierarchy,
-        };
+            OdinLaunchSettings settings = await ResolveAsync();
+            m_Log.Write($"launch options={launchOptions} exe={settings.Executable} args='{settings.Arguments}' cwd={settings.WorkingDirectory}");
+            DebugLaunchSettings launch = new(launchOptions)
+            {
+                Executable = settings.Executable,
+                Arguments = settings.Arguments,
+                CurrentDirectory = settings.WorkingDirectory,
+                LaunchOperation = DebugLaunchOperation.CreateProcess,
+                LaunchDebugEngineGuid = s_NativeEngine,
+                Project = VsHierarchy,
+            };
 
-        return [launch];
+            return [launch];
+        }
+        catch (Exception ex) when (IsBadLaunchSetting(ex))
+        {
+            m_Log.Write($"F5 launch failed: {ex.Message}; check TargetPath and the LocalDebugger* properties in the .odinproj");
+            return [];
+        }
     }
 }

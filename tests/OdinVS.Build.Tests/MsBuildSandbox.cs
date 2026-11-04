@@ -90,6 +90,16 @@ internal sealed class MsBuildSandbox
             new Dictionary<string, string> { ["NUGET_PACKAGES"] = PackagesDirectory });
     }
 
+    // Evaluates the project without building and prints the named properties (JSON).
+    public MsBuildResult GetProperties(string projectDirectory, string projectFile, params string[] properties)
+    {
+        return Run(
+            "dotnet",
+            $"msbuild \"{Path.Combine(projectDirectory, projectFile)}\" -restore -getProperty:{string.Join(",", properties)} -nodeReuse:false -nologo",
+            projectDirectory,
+            new Dictionary<string, string> { ["NUGET_PACKAGES"] = PackagesDirectory });
+    }
+
     public MsBuildResult Build(string projectDirectory, string projectFile, string targets, params string[] properties)
     {
         string propertyArguments = string.Concat(properties.Select(p => $" -p:\"{p}\""));
