@@ -122,15 +122,16 @@ Slice and dynamic-array display in Locals/Watch is a must-have, and natvis canno
 - [x] B2 (passed 2026-11-04; log lists all 28 locals with type names; FINDINGS.md) The component sees the sample's locals and logs the type name and member layout it receives for each one (what the PDB gives it, versus what natvis could match). This decides whether Phase C can key on `[]int` and `[dynamic]string` literally.
 
 **Phase C: slices and dynamic arrays (must-have)**
-- [ ] C1 `[]T` shows in Locals as `{len=N}` (or similar) and expands to its elements `[0]..[N-1]` with the right values, for `int`, `string` and a struct element type.
-- [ ] C2 `[dynamic]T` shows `len` and `cap` and expands to its `len` elements.
-- [ ] C3 The same display in Watch (`values`, and a nested member such as `thing.items`) and in the Autos window; editing and Raw View still work or the gap is recorded.
-- [ ] C4 Edge cases recorded: empty and nil slice, huge `len` or `cap` (element cap, paging), element type changes, a stale or uninitialized slice (garbage `len`), debugger stepping performance with a 1M-element array.
+- [x] C1 (verified in Exp by the user, spike 0.0.4+: `ints`, `strs`, `things`, `big`) `[]T` shows in Locals as `{len=N}` (or similar) and expands to its elements `[0]..[N-1]` with the right values, for `int`, `string` and a struct element type.
+- [x] C2 (verified in Exp by the user: `dyn_ints`, `dyn_strs`, `big` with 100,000 elements) `[dynamic]T` shows `len` and `cap` and expands to its `len` elements.
+- [ ] C3 (partly: Watch, nested members and DataTips verified in Exp, value editing works through retyped results; NOT done: Autos is empty for `.odin` even with the spike disabled, so it is not ours, and there is no Raw View child) The same display in Watch (`values`, and a nested member such as `thing.items`) and in the Autos window; editing and Raw View still work or the gap is recorded.
+- [ ] C4 (partly: empty/nil slices and a 100,000-element array verified; NOT done: garbage `len`, 1M elements, stepping performance; `len` is parsed from the C++ value text) Edge cases recorded: empty and nil slice, huge `len` or `cap` (element cap, paging), element type changes, a stale or uninitialized slice (garbage `len`), debugger stepping performance with a 1M-element array.
 - [ ] C5 Gap list for Phase C written into FINDINGS.md.
 
 **Phase D: Odin type names**
-- [ ] D1 Test whether the extension can show `int` for `__int64`, `u8` for `unsigned char`, `^T` for `T *`, in the Type column and value display (Locals and Watch); record which of those the API allows and which it does not.
-- [ ] D2 If D1 needs more than a formatter hook (an evaluator), record the extra work in rough terms and stop; do not build it.
+- [x] D1 (verified in Exp by the user: Locals/Watch show `int`, `f32`, `rune`, `cstring`, `^int`, `[4]int`; `int` vs `i64` and `[^]int` vs `^int` are indistinguishable in the PDB) Test whether the extension can show `int` for `__int64`, `u8` for `unsigned char`, `^T` for `T *`, in the Type column and value display (Locals and Watch); record which of those the API allows and which it does not.
+- Note (cosmetic, undecided): the `::` in names like `main::Thing` comes from the PDB; Odin spells it `main.Thing`. A display rename is possible in the same evaluator; see `spikes/concord-visualizer/FINDINGS.md` "Display notes".
+- [x] D2 (done by building the evaluator within the agreed depth; verified in Exp, spike 0.0.7: `len(x)`, `cap(x)`, `a[i]`, `things[0].tags[1]`. Cost: three hangs/crashes from Concord re-entrancy, see FINDINGS.md and the skill's `concord-debugger.md`; map `a[i]` not done) If D1 needs more than a formatter hook (an evaluator), record the extra work in rough terms and stop; do not build it.
 
 **Phase E: stretch types (each its own result: works / partly / does not)**
 - [ ] E1 `map[K]V` as key/value pairs with `len`.

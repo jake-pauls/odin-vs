@@ -9,7 +9,7 @@
         </InterfaceGroup>
       </Implements>
     </Class>
-    <Class Name="OdinConcordSpike.LoggingEvaluator">
+    <Class Name="OdinConcordSpike.OdinEvaluator">
       <Implements>
         <InterfaceGroup>
           <Filter>
