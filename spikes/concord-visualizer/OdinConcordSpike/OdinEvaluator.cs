@@ -69,6 +69,10 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
     private const ulong MaxMapCapacity = 1UL << 20;
 
+    // The sample's module; the context operator in a cast spelling needs it (experiment only).
+    private const string ModuleName = "ConcordSample.exe";
+
+    private static int m_VariantLogCount;
     private static int m_SequenceLogCount;
     private static int m_PerfCalls;
     private static long m_PerfItems;
@@ -108,9 +112,14 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     {
         inspectionContext.GetFrameArguments(workList, frame, result =>
         {
-            completionRoutine(result.ErrorCode != 0 || result.Arguments is null
-                ? result
-                : new DkmGetFrameArgumentsAsyncResult(TransformAll(result.Arguments)));
+            if (result.ErrorCode != 0 || result.Arguments is null)
+            {
+                completionRoutine(result);
+                return;
+            }
+
+            TransformAllAsync(result.Arguments, inspectionContext, workList, transformed =>
+                completionRoutine(new DkmGetFrameArgumentsAsyncResult(transformed)));
         });
     }
 
@@ -159,7 +168,8 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         {
             if (!IsFailure(firstResult))
             {
-                completionRoutine(new DkmEvaluateExpressionAsyncResult(Transform(firstResult.ResultObject!)));
+                TransformAllAsync([firstResult.ResultObject!], inspectionContext, workList, transformed =>
+                    completionRoutine(new DkmEvaluateExpressionAsyncResult(transformed[0])));
                 return;
             }
 
@@ -221,6 +231,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                         if (!IsFailure(results[i]!.Value))
                         {
                             SpikeLog.Write($"expression '{original.Text}' evaluated as '{texts[i]}'");
+                            // Already two calls deep: no further evaluation here (see above), so a cut-off header is not resolved.
                             completionRoutine(new DkmEvaluateExpressionAsyncResult(Transform(results[i]!.Value.ResultObject!)));
                             return;
                         }
@@ -277,7 +288,8 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
             DkmEvaluationResultEnumContext wrapped = DkmEvaluationResultEnumContext.Create(
                 children.EnumContext.Count, result.StackFrame, inspectionContext, new WrappedEnum(children.EnumContext));
-            completionRoutine(new DkmGetChildrenAsyncResult(TransformAll(children.InitialChildren), wrapped));
+            TransformAllAsync(children.InitialChildren, inspectionContext, workList, transformed =>
+                completionRoutine(new DkmGetChildrenAsyncResult(transformed, wrapped)));
         });
     }
 
@@ -295,9 +307,14 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             wrapped.Inner.GetItems(workList, startIndex, count, items =>
             {
                 Interlocked.Add(ref m_PerfDownstreamTicks, Stopwatch.GetTimestamp() - started);
-                completionRoutine(items.ErrorCode != 0 || items.Items is null
-                    ? items
-                    : new DkmEvaluationEnumAsyncResult(TransformAll(items.Items)));
+                if (items.ErrorCode != 0 || items.Items is null)
+                {
+                    completionRoutine(items);
+                    return;
+                }
+
+                TransformAllAsync(items.Items, enumContext.InspectionContext, workList, transformed =>
+                    completionRoutine(new DkmEvaluationEnumAsyncResult(transformed)));
             });
         }
         else if (enumContext.GetDataItem<SequenceEnum>() is SequenceEnum sequence)
@@ -339,13 +356,75 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         return target.GetUnderlyingString()!;
     }
 
-    private DkmEvaluationResult[] TransformAll(DkmEvaluationResult[] results)
+    // The C++ value text is cut off (`len=...`) when a result is long, so a missing len/cap is asked for with an
+    // expression first; everything else is transformed as before. `headers` maps a result to {len, cap or -1}.
+    private void TransformAllAsync(DkmEvaluationResult[] results, DkmInspectionContext inspectionContext, DkmWorkList workList, Action<DkmEvaluationResult[]> done)
+    {
+        var expressions = new List<string>();
+        var wanted = new List<(int Index, bool Dynamic, int First)>();
+        for (int i = 0; i < results.Length; i++)
+        {
+            if (results[i] is not DkmSuccessEvaluationResult success || success.Type is null)
+            {
+                continue;
+            }
+
+            bool dynamic = m_DynamicType.IsMatch(success.Type);
+            bool isHeaderType = dynamic || m_SliceType.IsMatch(success.Type) || TryParseMapType(success.Type, out _, out _);
+            if (!isHeaderType || (dynamic ? m_LenCap.IsMatch(success.Value) : m_Len.IsMatch(success.Value)))
+            {
+                continue;
+            }
+
+            wanted.Add((i, dynamic, expressions.Count));
+            expressions.Add($"{success.FullName}.len");
+            if (dynamic)
+            {
+                expressions.Add($"{success.FullName}.cap");
+            }
+        }
+
+        if (wanted.Count == 0)
+        {
+            done(TransformAll(results));
+            return;
+        }
+
+        EvalBatch(inspectionContext, workList, results[wanted[0].Index].StackFrame, expressions.ToArray(), values =>
+        {
+            try
+            {
+                var headers = new Dictionary<DkmEvaluationResult, long[]>();
+                foreach ((int index, bool dynamic, int first) in wanted)
+                {
+                    DkmSuccessEvaluationResult? len = values[first];
+                    DkmSuccessEvaluationResult? cap = dynamic ? values[first + 1] : null;
+                    if (len is null || (dynamic && cap is null))
+                    {
+                        SpikeLog.Write($"header expressions for {results[index].FullName} failed");
+                        continue;
+                    }
+
+                    headers[results[index]] = [(long)ParseUnsigned(len.Value), dynamic ? (long)ParseUnsigned(cap!.Value) : -1];
+                }
+
+                done(TransformAll(results, headers));
+            }
+            catch (Exception ex)
+            {
+                SpikeLog.Write($"resolving headers failed: {ex}");
+                done(TransformAll(results));
+            }
+        });
+    }
+
+    private DkmEvaluationResult[] TransformAll(DkmEvaluationResult[] results, Dictionary<DkmEvaluationResult, long[]>? headers = null)
     {
         long started = Stopwatch.GetTimestamp();
         var transformed = new DkmEvaluationResult[results.Length];
         for (int i = 0; i < results.Length; i++)
         {
-            transformed[i] = Transform(results[i]);
+            transformed[i] = Transform(results[i], headers);
         }
 
         Interlocked.Add(ref m_PerfOurTicks, Stopwatch.GetTimestamp() - started);
@@ -361,7 +440,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         return transformed;
     }
 
-    private DkmEvaluationResult Transform(DkmEvaluationResult result)
+    private DkmEvaluationResult Transform(DkmEvaluationResult result, Dictionary<DkmEvaluationResult, long[]>? headers = null)
     {
         try
         {
@@ -372,7 +451,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
             if (TryParseMapType(success.Type, out string mapKey, out string mapValue))
             {
-                return TransformMap(success, mapKey, mapValue) ?? result;
+                return TransformMap(success, mapKey, mapValue, headers) ?? result;
             }
 
             bool dynamic = false;
@@ -394,7 +473,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
             if (elementType is not null)
             {
-                return TransformSequence(success, dynamic) ?? result;
+                return TransformSequence(success, dynamic, headers) ?? result;
             }
 
             string? odinType = MapType(success.Type);
@@ -407,9 +486,22 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         }
     }
 
-    private static DkmEvaluationResult? TransformSequence(DkmSuccessEvaluationResult success, bool dynamic)
+    private static DkmEvaluationResult? TransformSequence(DkmSuccessEvaluationResult success, bool dynamic, Dictionary<DkmEvaluationResult, long[]>? headers)
     {
-        if (!TryReadHeader(success, dynamic, out long length, out long? capacity, out string how))
+        long length;
+        long? capacity;
+        string how;
+        if (headers is not null && headers.TryGetValue(success, out long[]? resolved))
+        {
+            length = resolved[0];
+            capacity = dynamic ? resolved[1] : null;
+            how = "expression";
+            if (!IsSane(length, capacity))
+            {
+                return null;
+            }
+        }
+        else if (!TryReadHeader(success, dynamic, out length, out capacity, out how))
         {
             return null;
         }
@@ -552,7 +644,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             DkmEvaluationResult[] only = pseudo.ToArray();
             completionRoutine(new DkmGetChildrenAsyncResult(
                 only,
-                DkmEvaluationResultEnumContext.Create(only.Length, result.StackFrame, inspectionContext, new SequenceEnum(pseudo, null, TransformAll))));
+                DkmEvaluationResultEnumContext.Create(only.Length, result.StackFrame, inspectionContext, new SequenceEnum(pseudo, null, r => TransformAll(r)))));
         }
 
         if (sequence.Length == 0)
@@ -592,7 +684,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                         pseudo.Count + children.EnumContext.Count,
                         result.StackFrame,
                         inspectionContext,
-                        new SequenceEnum(pseudo, children.EnumContext, TransformAll))));
+                        new SequenceEnum(pseudo, children.EnumContext, r => TransformAll(r)))));
             });
         });
     }
@@ -662,15 +754,35 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         return m_OdinToC.TryGetValue(odin, out string? c) ? c : odin;
     }
 
+    // `*(T*)0xaddr` for the C++ evaluator. Odin names like `main::Thing` do not cast (observed: `main::Pair`/`main::Thing` fail,
+    // `string` and `__int64` work); `main` is also a function, so the qualifier may resolve as a scope inside it. Experiment: try
+    // other spellings and log which one the evaluator accepts.
+    private static IEnumerable<string> CastVariants(string cType, ulong address)
+    {
+        string at = $"0x{address:x}";
+        yield return $"*({cType}*){at}";
+        if (cType.IndexOf("::", StringComparison.Ordinal) < 0)
+        {
+            yield break;
+        }
+
+        yield return $"*(::{cType}*){at}";
+        yield return $"*(struct {cType}*){at}";
+        yield return $"*(`{cType}`*){at}";
+        yield return $"*({{,,{ModuleName}}}{cType}*){at}";
+        yield return $"*({cType.Substring(cType.LastIndexOf("::", StringComparison.Ordinal) + 2)}*){at}";
+    }
+
     private static ulong CellSize(ulong size)
     {
         return size > 0 && size < 64 ? 64 : Math.Max(64, (size + 63) / 64 * 64);
     }
 
+    // Where the array after a cell array starts: Odin indexes `capacity` as an element (map_cell_index_dynamic), so a partly
+    // filled last cell is skipped only up to its used part (12-byte keys, capacity 8: 100 bytes, not two whole cells).
     private static ulong CellArrayBytes(ulong capacity, ulong size)
     {
-        ulong perCell = size > 0 && size < 64 ? 64 / size : 1;
-        return (capacity + perCell - 1) / perCell * CellSize(size);
+        return ElementOffset(capacity, size);
     }
 
     private static ulong ElementOffset(ulong index, ulong size)
@@ -696,15 +808,23 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         return number.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToUInt64(number.Substring(2), 16) : ulong.Parse(number);
     }
 
-    private static DkmEvaluationResult? TransformMap(DkmSuccessEvaluationResult success, string key, string value)
+    private static DkmEvaluationResult? TransformMap(DkmSuccessEvaluationResult success, string key, string value, Dictionary<DkmEvaluationResult, long[]>? headers)
     {
+        long length;
         Match match = m_Len.Match(success.Value);
-        if (!match.Success)
+        if (match.Success)
+        {
+            length = ParseNumber(match.Groups["len"].Value);
+        }
+        else if (headers is not null && headers.TryGetValue(success, out long[]? resolved))
+        {
+            length = resolved[0];
+        }
+        else
         {
             return null;
         }
 
-        long length = ParseNumber(match.Groups["len"].Value);
         if (!IsSane(length, null))
         {
             return null;
@@ -779,7 +899,9 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
         string keyC = ToCType(map.KeyType);
         string valueC = ToCType(map.ValueType);
-        string[] expressions = [$"{result.FullName}.data", $"sizeof({keyC})", $"sizeof({valueC})"];
+        // Sizes come from the members of the C++ type of `data` (struct { key, value, hash, ... } *), which needs no type name:
+        // proc-local types are spelled `main::main::Triple::$553`, which the C++ evaluator cannot parse.
+        string[] expressions = [$"{result.FullName}.data", $"sizeof({result.FullName}.data->key)", $"sizeof({result.FullName}.data->value)"];
         EvalBatch(inspectionContext, workList, result.StackFrame, expressions, values =>
         {
             try
@@ -857,16 +979,40 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
         MapLayout layout = map.Layout;
         DkmInspectionContext inspectionContext = map.Parent.InspectionContext;
-        var expressions = new string[slotCount * 2];
+        // Elements 2*i (key) and 2*i+1 (value); each has one or more spellings of the cast, tried in one flat batch.
+        var expressions = new List<string>();
+        var firstVariant = new int[slotCount * 2 + 1];
         for (int i = 0; i < slotCount; i++)
         {
             ulong slot = map.Slots[firstSlot + i];
-            expressions[i * 2] = $"*({layout.KeyC}*)0x{layout.Keys + ElementOffset(slot, layout.KeySize):x}";
-            expressions[i * 2 + 1] = $"*({layout.ValueC}*)0x{layout.Values + ElementOffset(slot, layout.ValueSize):x}";
+            firstVariant[i * 2] = expressions.Count;
+            expressions.AddRange(CastVariants(layout.KeyC, layout.Keys + ElementOffset(slot, layout.KeySize)));
+            firstVariant[i * 2 + 1] = expressions.Count;
+            expressions.AddRange(CastVariants(layout.ValueC, layout.Values + ElementOffset(slot, layout.ValueSize)));
         }
 
-        EvalBatch(inspectionContext, workList, map.Parent.StackFrame, expressions, results =>
+        firstVariant[slotCount * 2] = expressions.Count;
+
+        EvalBatch(inspectionContext, workList, map.Parent.StackFrame, expressions.ToArray(), variantResults =>
         {
+            var results = new DkmSuccessEvaluationResult?[slotCount * 2];
+            for (int element = 0; element < results.Length; element++)
+            {
+                for (int v = firstVariant[element]; v < firstVariant[element + 1]; v++)
+                {
+                    if (variantResults[v] is not null)
+                    {
+                        results[element] = variantResults[v];
+                        if (v != firstVariant[element] && Interlocked.Increment(ref m_VariantLogCount) <= LoggedSequenceLimit)
+                        {
+                            SpikeLog.Write($"cast spelling worked on variant {v - firstVariant[element]}: {expressions[v]}");
+                        }
+
+                        break;
+                    }
+                }
+            }
+
             try
             {
                 for (int i = 0; i < slotCount; i++)
@@ -875,7 +1021,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                     DkmSuccessEvaluationResult? value = results[i * 2 + 1];
                     if (key is null || value is null)
                     {
-                        SpikeLog.Write($"map entry failed: {expressions[i * 2]} -> {Describe(key)}; {expressions[i * 2 + 1]} -> {Describe(value)}");
+                        SpikeLog.Write($"map entry failed: {expressions[firstVariant[i * 2]]} -> {Describe(key)}; {expressions[firstVariant[i * 2 + 1]]} -> {Describe(value)}");
                         items.Add(Pseudo(map.Parent, inspectionContext, $"[slot {map.Slots[firstSlot + i]}]", "?", "<unreadable>"));
                         continue;
                     }

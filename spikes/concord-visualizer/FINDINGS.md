@@ -75,3 +75,28 @@ Plan: restore `Microsoft.VisualStudio.Debugger.Engine` and `Microsoft.VSSDK.Debu
 - Cost to build: one session step, about 300 lines, no new APIs beyond slices; the layout is stable Odin runtime detail, so it must be re-checked on each Odin bump (pin it like ols).
 - Phase F data point: casting to the Odin `string` type (`*(string*)0x...`) works in the C++ evaluator; no collision with C++ `string` was seen in this sample.
 - Untested: entry sizes that do not divide 64 (padding formula), struct keys/values, tombstones after `delete`, maps larger than 8 slots, nested maps.
+
+## Odin-version-coupled code (check first on every Odin bump; user request 2026-11-05)
+Anything that depends on Odin's base library or compiler output rather than on the PDB's type names must be listed here, so a version bump starts with this list.
+
+| Visualization | Depends on | Where in Odin | Breaks if |
+|---|---|---|---|
+| `map[K]V` entries | `Raw_Map` field order (`data`, `len`, `allocator`); `data` = pointer with log2 capacity in the low 6 bits; keys, values, hashes laid out as consecutive `Map_Cell` arrays of 64-byte cells; slot used when hash != 0 and top bit clear; `Map_Hash` = `uintptr` | `base/runtime/core.odin` (`Raw_Map`, `Map_Cell`, `MAP_CACHE_LINE_SIZE`, `Map_Hash`), `base/runtime/dynamic_map_internal.odin` (`map_cell_index_*`, `map_kvh_data_dynamic`, `map_hash_is_valid`) | any of those change |
+| Slices and dynamic arrays | `len` at offset 8, `cap` at offset 16, member named `.data` and `.len` in the PDB struct (`{data, len, cap, allocator}`) | `Raw_Slice`, `Raw_Dynamic_Array` in `core.odin` | field names or order change |
+| Type names | PDB spelling of composites (`[]T`, `[dynamic]T`, `map[K]V`) and of scalars (`__int64`, `char32_t`, ...) | Odin's CodeView debug-info emitter | the emitter renames or splits types |
+
+Planned guard (proposed, not built): (1) a tier-2-style test, `RequiresToolchain`, that reads the installed Odin's `base/runtime` sources and asserts the exact constructs above exist (cheap, no debugger); (2) an Odin program that dumps a map's real layout (`runtime.map_kvh_data_dynamic` offsets and raw hashes) which a C# unit test of the decoding math compares against, so a layout change fails without Visual Studio; (3) the Exp checklist re-run on the `ConcordSample` for the end-to-end display.
+
+### E1 follow-up: struct keys/values, truncated headers, cast spelling (spikes 0.0.9-0.0.11, verified in Exp by the user 2026-11-05)
+- Works: map[Triple]int (proc-local type, 12-byte keys, cell padding), map[Pair]string, map[int]Thing (80-byte values), map[int]int with 12 entries and two deleted keys, plus the earlier maps; Locals and Watch; struct keys show as [{a=4 b=5 c=6 }], struct values expand.
+- Truncated C++ value text (0.0.9): long values are cut (len=...), so len/cap parsed from text failed and the raw C view showed. Fixed by evaluating <name>.len / .cap with the C++ evaluator when the text has no number (skipped in the Watch [] fallback, already two evaluations deep).
+- Sizes without type names (0.0.10): sizeof(<map>.data->key) / ->value work for any key/value, including proc-local types.
+- Layout correction (0.0.11): the array after a cell array starts at ElementOffset(capacity) (map_cell_index_dynamic), not after whole cells; 12-byte keys at capacity 8 give 100 bytes. Wrong math showed as 7 used slots instead of 3.
+- Cast spelling: *(main::Thing*)0x.. is rejected by the C++ evaluator; *(::main::Thing*)0x.. (leading global-scope ::) is accepted, also for proc-local main::main::Triple::$585. string and __int64 need no prefix.
+- Untested: nested maps, maps as values, V as a slice, maps in other packages (pkg::Type, same :: prefix expected). Entry order is slot (hash) order.
+
+### Package-level variables (Watch only; Locals never lists them) - verified in Exp by the user 2026-11-05
+- Plain names work in Watch once the variable has a debug symbol: g_count (41), g_name ("global"), g_ints ({len=3}), g_dyn ({len=3 cap=8}), g_map ({len=2}), g_things ({len=1 cap=8}), g_const_count (constant initializer, 41); g_ints.data[1] and g_ints.len work, and editing g_ints.data[1] to 9 worked. They go through the same slice/map display as locals.
+- main::g_ints / main::g_count are rejected by the C++ evaluator ("name followed by :: must be a class or namespace name"); package-level names are plain identifiers.
+- First run: g_count, g_name and g_ints were "identifier is undefined" while g_dyn, g_map and g_things were visible. My guess (constant initializer on the declaration means no debug symbol) was WRONG: after the initializers moved into main the constant-initialized control g_const_count was visible too. What also changed in that edit is that all of them became referenced (printed); the first-run failures were the three globals that were declared but never used. Most likely cause: Odin emits no debug symbol for a package-level variable nothing references. Not isolated (two changes at once); the native evaluator, not our component, reports the error.
+- Consequence for users: an unreferenced global cannot be inspected; not fixable from a debug component.

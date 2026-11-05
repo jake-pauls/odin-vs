@@ -8,6 +8,7 @@ Everything below amends or extends the brief. Where they conflict, this file win
   - `ols\ols-x86_64-pc-windows-msvc.exe` (+ `odinfmt-x86_64-pc-windows-msvc.exe`, `ols\builtin\*.odin`). Bundle copy is renamed `ols.exe`.
 - **Hard requirements (user, confirmed):** `.sln`/`.odinproj`, mixed in one solution with C#/C++ projects; Configuration Manager (Debug/Release/...); Solution Explorer `Add Project`, `Add Existing Project`, `Add Item`, `Add Reference`; `.odinproj` XML is the source of truth (no property pages); all builds are native `odin` commands; cycle detection for references; designed for 10-20 projects typically, **100+ without pain**. Open Folder is rejected.
 - **Project system: CPS (decided 2026-10-30 after the M0 spike; see "Project system decision").** MPFProj is not planned.
+- **Debugger visualizer (M5.5, prototype on `m5-5/debugging-experiments`, 2026-11-05):** a Concord debug-engine component in front of the native evaluator works in Exp: `[]T`, `[dynamic]T` (`{len=N}`, children `[len]`, `[cap]`, elements), Odin scalar names, `map[K]V` entries (incl. struct keys/values), and Watch expressions `a[i]`, `len(a)`, `cap(a)`. Code, logs and the cost story: `spikes/concord-visualizer/` (`FINDINGS.md`). Decided (user): ship it in the same VSIX as the product, after tests and scoping (milestone item G6). Not started: `any`/`union`/`enum`/`bit_set`, `[^]T`/fixed/`matrix` (E2, E3), scoping to Odin only (Phase F), write-up (Phase G).
 
 ## Findings on the brief
 
@@ -181,7 +182,14 @@ main
 - **Find a silent VS failure by logging, then a control.** Log the relevant state from a handler on the same event with `Log.Default` (that is how auto-close was traced to the `BraceCompletion/Enabled` option), and compare against a control (C# in the same Exp) before blaming the platform. An earlier note here called auto-close a platform limit; it was wrong.
 - **Decompile into the session scratchpad,** not `%TEMP%` (a `Remove-Item` there was denied), and search the output with Grep/Read; `Select-String -Recurse` hits long-path errors.
 - **Comment-only edits to shipped files still go into the VSIX.** Say what was and was not reloaded in Exp (the natvis note was XML-checked only).
-- **Odin and debugger facts** (type names in the PDB, what natvis can and cannot match, the `DebugOdin` sample) are in `docs/pitfalls.md`; the milestone for the slice and dynamic-array visualizer prototype is M5.5 in `docs/milestones.md` (branch `m5.5/<slug>`, between M5 and M6).
+- **Odin and debugger facts** (type names in the PDB, what natvis can and cannot match, the `DebugOdin` sample, the map layout, `::` casts, package-level variables) are in `docs/pitfalls.md` (sections "Odin PDB types, natvis..." and "Odin facts found while prototyping the debugger visualizer"); the milestone for the visualizer prototype is M5.5 in `docs/milestones.md` (branch `m5-5/debugging-experiments`, between M5 and M6).
+
+### Debugger component (Concord) rules (from M5.5)
+- **Read the skill notes first:** the `visual-studio-2026-extensions` skill's `references/concord-debugger.md` (setup, chaining, re-entrancy). Never nest `EvaluateExpression` calls from completion callbacks more than two deep, never create threads or timers to complete an evaluation, and issue several attempts as one flat batch. Each of these cost an Exp crash or a 30 s hang (VS had to be killed).
+- **Anything that depends on Odin's base library is version-coupled.** The list lives in `spikes/concord-visualizer/FINDINGS.md` ("Odin-version-coupled code"); update it whenever a visualization starts depending on the runtime (maps do: `Raw_Map` layout; slices and dynamic arrays depend on field names and order). It is the first thing to check on an Odin bump, and nothing leaves `spikes/` without the tests in milestone item G6 (source check, layout dump compared with the decoding math, Exp checklist). Odin 1.0 is expected soon.
+- **Verify one hypothesis at a time.** The "constant initializer hides a global" guess was wrong because the test changed two things at once. State a guess as a guess and change one variable.
+- **Control before blaming the component.** Autos stayed empty with the extension disabled; "identifier is undefined" came from the native evaluator, not us. Check with the component off before debugging our code.
+- **Do not parse debugger value text for numbers.** It is cut off (`len=...`); evaluate the member (`<name>.len`).
 
 ## Architecture additions
 ```

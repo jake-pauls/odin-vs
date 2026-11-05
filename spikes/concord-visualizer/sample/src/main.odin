@@ -33,6 +33,10 @@ Shape :: union {
 	Rect,
 }
 
+Pair :: struct {
+	a, b: i32,
+}
+
 Thing :: struct {
 	name:  string,
 	id:    int,
@@ -40,7 +44,28 @@ Thing :: struct {
 	tags:  [dynamic]string,
 }
 
+// Package-level variables: Locals does not list these, so check them in Watch (`g_ints`, `main::g_ints`, `g_map`, ...).
+// Experiment: g_count/g_name/g_ints had constant initializers on the declaration and were "undefined" in Watch;
+// g_dyn/g_map/g_things (no initializer, assigned in main) were visible. They are now assigned in main like the others.
+// g_const_count keeps a constant initializer as the control.
+g_const_count: int = 41
+g_count: int
+g_name: string
+g_ints: []int
+g_dyn: [dynamic]string
+g_map: map[string]int
+g_things: [dynamic]Thing
+
 main :: proc() {
+	g_count = 41
+	g_name = "global"
+	g_ints = []int{7, 8, 9}
+	append(&g_dyn, "x", "y", "z")
+	g_map = make(map[string]int)
+	g_map["one"] = 1
+	g_map["two"] = 2
+	append(&g_things, Thing{name = "g", id = 99})
+
 	// --- must-have: slices and dynamic arrays ---
 	ints := []int{10, 20, 30}
 	strs := []string{"alpha", "beta", "gamma"}
@@ -71,6 +96,29 @@ main :: proc() {
 		1 = "one",
 		2 = "two",
 	}
+	// Map layout edge cases: 12-byte key (cells hold 5 with 4 bytes padding), growth past 8 slots, a deleted slot.
+	Triple :: struct {
+		a, b, c: i32,
+	}
+	triple_keys := map[Triple]int {
+		Triple{1, 2, 3} = 10,
+		Triple{4, 5, 6} = 20,
+		Triple{7, 8, 9} = 30,
+	}
+	pair_keys := map[Pair]string {
+		Pair{1, 2} = "a",
+		Pair{3, 4} = "b",
+	}
+	thing_values := map[int]Thing {
+		1 = Thing{name = "one", id = 1},
+		2 = Thing{name = "two", id = 2},
+	}
+	many := make(map[int]int)
+	for i in 1 ..= 12 {
+		many[i] = i * i
+	}
+	delete_key(&many, 4)
+	delete_key(&many, 9)
 	color := Color.Green
 	flags := Flags{.Read, .Exec}
 	shape: Shape = Rect{3, 4}
@@ -86,7 +134,7 @@ main :: proc() {
 	ratio := f32(0.5)
 	ok := true
 
-	fmt.println("done", ints, strs, empty_slice, nil_slice, dyn_ints, dyn_strs, dyn_empty, len(big), one, sub, scores, names, color, flags, shape, anything, ptr, multi, fixed, mat, text, cstr, letter, ratio, ok)
+	fmt.println("done", g_const_count, g_count, g_name, g_ints, g_dyn, g_map, g_things,ints, strs, empty_slice, nil_slice, dyn_ints, dyn_strs, dyn_empty, len(big), one, sub, scores, names, triple_keys, pair_keys, thing_values, many, color, flags, shape, anything, ptr, multi, fixed, mat, text, cstr, letter, ratio, ok)
 
 	delete(dyn_ints)
 	delete(dyn_strs)
@@ -95,4 +143,8 @@ main :: proc() {
 	delete(one.tags)
 	delete(scores)
 	delete(names)
+	delete(triple_keys)
+	delete(pair_keys)
+	delete(thing_values)
+	delete(many)
 }
