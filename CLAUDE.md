@@ -168,12 +168,21 @@ main
 11. **Decided:** all spike code goes under `spikes/<name>/` on its task branch, never into `src/` or `tests/` (the scratchpad is session-local and unreviewable); promote real pieces (e.g. `OlsClient` into `OdinVS.Core.Tests`) in later tasks.
 12. **Test in VS before committing anything that affects VS.** If a change touches what Visual Studio sees (the SDK props/targets and CPS rules, the project system, the VSIX, grammar or language configuration, the language client), load it in the Experimental instance and check the affected behavior there before the commit. Command-line `msbuild` and unit tests are not a substitute: M3's first commit passed all of them yet the Configuration Manager was broken in VS (see `docs/pitfalls.md`). Say in the commit or milestone note what was checked in VS, and what was not.
 
+### Working in this project (lessons from M5)
+- **A passing build and tests do not satisfy a VS-facing item.** M5's natvis built, installed and parsed, yet slices still did not display; only Exp showed it. Tick a milestone item only for what was seen working, say in the note what was not, and never narrow an item's scope (for example dropping slices from "ints, strings, slices") without asking: the user lists slice visualization as a must-have.
+- **Do not commit a half-working VS feature on your own initiative** (rule 12). Commit when the user has seen it work, or when the user says to commit the working part and park the rest, and write the parked part into the milestone as a gap with its cause.
+- **Take VS evidence from the user, as text.** Computer-use access to Visual Studio may be denied and is click-only anyway. Ask for a short checklist run in Exp plus a screenshot or pasted Output text. For anything that can fail silently (natvis, pkgdef, MEF), first ask for the diagnostic that makes it loud (natvis: Tools > Options > Debugging > Output Window > Natvis diagnostic messages = Verbose) instead of guessing a fix.
+- **Stop-hook or goal feedback is not a reason to cut scope or commit early.** If the only open item needs the user (an Exp check, a decision), say so and wait; do not substitute an easier deliverable.
+- **Scripted edits of CRLF files:** guard every `String.Replace` with a `Contains` check that throws; see `docs/pitfalls.md`. Match the file's own newline.
+- **`git fetch` and `git push` use `$env:GIT_SSH_COMMAND = 'C:/Windows/System32/OpenSSH/ssh.exe'` (rule 9).** A fetch without it fails with `Permission denied (publickey)`.
+- **Odin and debugger facts** (type names in the PDB, what natvis can and cannot match, the `DebugOdin` sample) are in `docs/pitfalls.md`; the milestone for the slice and dynamic-array visualizer prototype is M5.5 in `docs/milestones.md` (branch `m5.5/<slug>`, between M5 and M6).
+
 ## Architecture additions
 ```
 src/OdinVS.Core/            # netstandard2.0, no VS refs: error-output parser, odin arg builder,
                             # ols.json generator, version-compat check, .odinproj reader
 tests/OdinVS.Core.Tests/    # MSTest
-src/OdinVS.ProjectSystem/   # net472 VS package: tool-warning info bar (OdinProject UI context). The CPS project type itself is registered in src/OdinVS/odin.pkgdef
+src/OdinVS.ProjectSystem/   # net472 VS package: tool-warning info bar (OdinProject UI context) and `OdinDebugLaunchProvider` (F5/Ctrl+F5). The CPS project type itself is registered in src/OdinVS/odin.pkgdef
 src/OdinVS.Build/           # Odin.Sdk package source: Sdk.props/targets, CPS rules, task DLL from Core. LOCAL ONLY, see nuget/README.md
 nuget/                       # local feed written by scripts\pack-sdk.ps1; the *.nupkg is git-ignored (never commit or publish), only its README is tracked
 tests/OdinVS.Build.Tests/   # MSTest tier 3: packs the SDK to a scratch feed, runs `dotnet msbuild` on copies of tests/samples with real odin

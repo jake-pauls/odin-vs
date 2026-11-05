@@ -11,6 +11,14 @@
                 SourceOfDefaultValue="AfterContext" />
   </Rule.DataSource>
 
-  <StringProperty Name="OdinDebuggerPlaceholder"
-                  Visible="False" />
+  <!-- Defaults come from Sdk.targets; OdinDebugLaunchProvider reads these evaluated values at launch. -->
+  <StringProperty Name="LocalDebuggerCommandArguments"
+                  DisplayName="Command Arguments"
+                  Description="Arguments passed to the program."
+                  Category="General" />
+  <StringProperty Name="LocalDebuggerWorkingDirectory"
+                  DisplayName="Working Directory"
+                  Description="Working directory of the program. Defaults to the project directory."
+                  Subtype="folder"
+                  Category="General" />
 </Rule>

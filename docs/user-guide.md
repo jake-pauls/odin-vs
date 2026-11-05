@@ -2,13 +2,13 @@
 
 User-facing notes for people building `.odinproj` projects. The overview and install entry point is the root [README.md](../README.md). Developer material lives in [dev-docs.md](dev-docs.md), `CLAUDE.md`, `docs/toolchain.md` and `docs/pitfalls.md`.
 
-Status: `.odinproj` projects open in a solution, build from VS and the command line, and show errors in the Error List (M3, M4). F5 and breakpoints arrive with M5, references with M6.
+Status: `.odinproj` projects open in a solution, build from VS and the command line, and show errors in the Error List (M3, M4). F5, Ctrl+F5 and breakpoints in `.odin` files work (M5); in Locals, slices and dynamic arrays show only raw `data`/`len` (see M5.5); references arrive with M6.
 
 ## Installing the extension in Visual Studio
 
 This installs a personal build into your normal Visual Studio 2026 (18.x) from a clone; there is no published release. To develop the extension in the separate Experimental instance instead, see [dev-docs.md](dev-docs.md).
 
-What you get today: `.odin` syntax colorization, language-server diagnostics on save (squiggles and Error List) from the bundled `ols`, `.odinproj` projects in a solution, and command-line builds. Odin projects in a solution (tree, Build/Clean/Rebuild, Configuration Manager, File > New) work from M4; F5 arrives with M5.
+What you get today: `.odin` syntax colorization, language-server diagnostics on save (squiggles and Error List) from the bundled `ols`, `.odinproj` projects in a solution, and command-line builds. Odin projects in a solution (tree, Build/Clean/Rebuild, Configuration Manager, File > New) work from M4; F5 and Ctrl+F5 launch the built program under the debugger (M5).
 
 1. Install the prerequisites: Visual Studio 2026 with the *Visual Studio extension development* workload, the .NET SDK 10, and Odin (at `C:\Program Files\Odin\odin\dist\odin.exe` or on `PATH`). `ols` is bundled.
 2. Clone and build the extension from a PowerShell prompt in the clone:
@@ -83,6 +83,8 @@ Everything an `.odinproj` can set, with its default. Properties are plain MSBuil
 | `OdinDebug` | `true` in Debug, `false` otherwise | Adds `-debug` (and produces the `.pdb`). A default you can override, e.g. `<OdinDebug>true</OdinDebug>` for a Profile configuration |
 | `OutDir` | `bin\<Configuration>\` | Output directory (relative to the project, or absolute) |
 | `TargetName` | project name | Output file name without extension |
+| `LocalDebuggerCommandArguments` | empty | Arguments passed to the program on F5 and Ctrl+F5 |
+| `LocalDebuggerWorkingDirectory` | the project directory | Working directory on F5 and Ctrl+F5 (relative to the project, or absolute) |
 | `TargetPath` | `<OutDir><TargetName>.exe` | Full output path (relative to the project, or absolute); the `.pdb` is written next to it with the same name |
 
 | Item | Purpose |
