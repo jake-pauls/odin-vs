@@ -100,12 +100,61 @@ Decided 2026-11-02 (user): `Odin.Sdk` is **not** shipped with the VSIX; each pro
 
 - M5 decisions (user, 2026-11-03): showing Odin scalar names (`int` for `__int64`) in the debugger needs a custom debug engine or evaluator and is not planned; the C names are coherent enough, so it is **off the roadmap, left as a note**. Natvis cannot rename types. Slice, dynamic-array and map visualizers are not possible with natvis (cause confirmed above); they stay a documented gap unless a debugger extension is ever wanted.
 
-### M5.5 Debugger visualizer prototype (decided 2026-11-03, user; between M5 and M6, own branch `m5.5/<slug>`)
+### M5.5 Debugger visualizer prototype (decided 2026-11-03, user; between M5 and M6, own branch `m5-5/debugging-experiments`)
 Slice and dynamic-array display in Locals/Watch is a must-have, and natvis cannot do it (see M5). This milestone is a **prototype to test feasibility only**, not a shipped feature; its result decides whether it is built properly.
-- [ ] Prototype a debugger extension (Concord-based visualizer or expression evaluator; pick after reading how VS loads them) that shows `[]T` and `[dynamic]T` as an element list with `len` (and `cap`) in Locals/Watch.
-- [ ] Odin-native type matching: recognize Odin types by their PDB names (`[]int`, `[dynamic]string`, `string`) and test whether Odin scalar names (`int` for `__int64`) can be shown. Record what the debugger APIs allow.
+
+**Scope decisions (user, 2026-11-04):**
+- **Depth: visualizers plus Odin type names.** Keep the native engine and add a Concord extension; show slices and dynamic arrays as element lists, and test whether Odin names (`int` for `__int64`) can be shown. A full custom expression evaluator (Odin as its own debugger language) is **not** in scope; if Phase A or D says the type-name goal needs one, stop and report its cost instead of building it. This reopens the M5 note that scalar names are "off the roadmap" only as a measurement; the roadmap decision stays until this milestone's write-up.
+- **Must-have:** `[]T` and `[dynamic]T`. **Stretch, each recorded as works / partly / does not:** `map[K]V`; `any`, `union`, `enum`, `bit_set`; multi-pointer `[^]T`, fixed arrays `[N]T`, `matrix[R,C]T`.
+- **Approved for this milestone (read-only or named-first):** read learn.microsoft.com and `github.com/microsoft/ConcordExtensibilitySamples`; NuGet restore for Concord assemblies (name the exact packages and versions before restoring; a `HintPath` to the VS install is the fallback, as for CPS); decompile VS debugger assemblies into the session scratchpad. Anything else (other network access, deletes, commits beyond task-branch commits) is still per action.
+- **Gates and evidence:** phase gates like M0's CPS spike. Each Phase A check ends "feasible", "feasible with caveat: ..." or "impossible: ..." with evidence; stop and report on any "impossible" and when told to stop. Exp checks are done by the user from a short checklist with screenshots or pasted Output text (computer-use access to VS is click-only). Turn on natvis diagnostics (Verbose) first when natvis is involved.
+- **Layout:** all code under `spikes/concord-visualizer/` (rule 11); nothing in `src/` until the write-up decides. Branch `m5-5/debugging-experiments` (the user's name; the `m5.5/<slug>` form above is superseded). Ticks are proposals until the PR merges.
+
+**Phase A: feasibility (reading and tiny probes; no extension yet)**
+- [ ] A1 How VS loads a Concord extension for a native debuggee: component type and level, `.vsdconfig`/`.vsdconfigxml`, VSIX asset type and folder, in-proc in `devenv` versus `msvsmon`, and what a managed component targets (net472?). Evidence: docs, samples, and VS's own installed `.vsdconfig` files.
+- [ ] A2 Pick the hook by reading: custom visualizer (`DkmCustomVisualizer`/evaluation-result formatting) versus language expression evaluator versus formatter/type-name hook; how the native engine's C evaluator interacts (the Call Stack Language column showed `C`); whether an extension can claim only Odin modules (compiler/language ID in the PDB, or module path) without touching C/C++ sessions. State which hook each of the Phase C, D and E goals needs.
+- [ ] A3 Dependencies and build: which assemblies/packages supply the Concord API for a VS 18.11 host, whether they build with VS MSBuild alongside the existing VSIX, and how the component is packaged and deployed (extra asset in `src/OdinVS` eventually). Ask before the first restore (named packages and versions).
+- [ ] A4 Gate result recorded in `spikes/concord-visualizer/FINDINGS.md` (each of A1-A3: feasible / caveat / impossible, with evidence) and a go/no-go for Phase B.
+
+**Phase B: walking skeleton**
+- [ ] B0 Test program `spikes/concord-visualizer/sample/` (Odin project, Debug) with locals of every type in scope: `[]int`, `[]string`, `[dynamic]int`, `[dynamic]string`, empty and nil slices, a large dynamic array, nested (`[]struct`), plus the stretch types. Builds with the real SDK and hits a breakpoint under F5 (user, Exp).
+- [ ] B1 A do-nothing Concord component in the VSIX loads on F5 (proof: a line in `%LOCALAPPDATA%\OdinVS\odinvs.log` or Output, written from the component) and does not load when no debug session is running; the VSIX still installs per the Exp sequence in the skill.
+- [ ] B2 The component sees the sample's locals and logs the type name and member layout it receives for each one (what the PDB gives it, versus what natvis could match). This decides whether Phase C can key on `[]int` and `[dynamic]string` literally.
+
+**Phase C: slices and dynamic arrays (must-have)**
+- [ ] C1 `[]T` shows in Locals as `{len=N}` (or similar) and expands to its elements `[0]..[N-1]` with the right values, for `int`, `string` and a struct element type.
+- [ ] C2 `[dynamic]T` shows `len` and `cap` and expands to its `len` elements.
+- [ ] C3 The same display in Watch (`values`, and a nested member such as `thing.items`) and in the Autos window; editing and Raw View still work or the gap is recorded.
+- [ ] C4 Edge cases recorded: empty and nil slice, huge `len` or `cap` (element cap, paging), element type changes, a stale or uninitialized slice (garbage `len`), debugger stepping performance with a 1M-element array.
+- [ ] C5 Gap list for Phase C written into FINDINGS.md.
+
+**Phase D: Odin type names**
+- [ ] D1 Test whether the extension can show `int` for `__int64`, `u8` for `unsigned char`, `^T` for `T *`, in the Type column and value display (Locals and Watch); record which of those the API allows and which it does not.
+- [ ] D2 If D1 needs more than a formatter hook (an evaluator), record the extra work in rough terms and stop; do not build it.
+
+**Phase E: stretch types (each its own result: works / partly / does not)**
+- [ ] E1 `map[K]V` as key/value pairs with `len`.
+- [ ] E2 `any` (typeid and data), `union` (active variant), `enum` (names instead of numbers), `bit_set` (member list).
+- [ ] E3 Multi-pointer `[^]T` (needs a count source), fixed `[N]T` (check what the native engine already shows), `matrix[R,C]T`.
+
+**Phase F: scoping**
 - [ ] Scope the visualizers to Odin debug sessions. `odin.natvis` is a global `NativeVisualizer` asset, so its `string` entry could match a C/C++ type literally named `string` (not tested; how natvis matches qualified and typedef'd names is unverified). Experiments, in order: (a) in Exp, debug a C++ project with `struct string { char* data; long long len; }` and `std::string` and see what Locals shows; (b) test whether the CPS launch provider can hand natvis files to the debugger for one project only, as C++ projects do with a `Natvis` item, so nothing is installed globally; (c) otherwise gate on the module's source language inside the Concord extension and move the `string` entry there. Record which one works.
-- [ ] Write up the outcome (works / does not, cost, how it is deployed in the VSIX) in this file and the `visual-studio-2026-extensions` skill, and propose either a real milestone or dropping it.
+
+**Beyond this prototype: what a custom expression evaluator or debug engine could add (user, 2026-11-04: record the benefits; build only if the prototype goes well, here or in a later milestone).** These are candidate benefits from background knowledge, **(unverified)** until Phase A/D show what the Concord API allows; none is a commitment.
+- **Odin-native expressions in Watch, Immediate and conditional breakpoints:** `values[2]`, `len(values)`, `name == "odin"`, `cast(f32)count`, `x^`, `a.?`/`a.(T)` instead of C-evaluator syntax such as `values.data[2]` or `values.data,3`. The C evaluator parses C; Odin slicing (`s[1:3]`), `in`, `or_else`, `context.` and `len`/`cap` builtins do not parse.
+- **Odin type names and value formats everywhere:** `int`, `u8`, `^T`, `[]T`, `map[K]V`, `string`, `rawptr`, `typeid` in Locals, Watch, Call Stack parameters, tooltips and the Memory/Autos windows; enums by member name, `bit_set` as `{A, B}`, `any` as its dynamic type and value, `union` by active variant, `Maybe(T)`, `Small_Array` and `#soa` containers by element.
+- **Correct language semantics:** Odin-aware formatting of `string` and `cstring` (UTF-8, length-based), `rune`, `complex`/`quaternion`, `matrix`, `distinct` types, and `context`/implicit-parameter display; array/slice bounds from `len`, so no walking off the end.
+- **Expression editing aids:** an Odin-aware Watch parser could offer completion/hover in the Watch window from ols data, and `Add Watch` on `a.b[c]` without hand-translation.
+- **Stepping and call-stack polish:** Odin procedure names shown as `pkg.proc` rather than mangled `pkg::proc`, `#force_inline` and `defer` handling in the stack, `-debug` variable lifetimes; steps through Odin runtime and `core:` frames can be filtered (just-my-code style). Needs a stack-walk or frame-filter hook; whether Concord exposes one is unverified.
+- **Own-language data breakpoints and tracepoints:** conditions and tracepoint messages (`{values[0]}`) in Odin syntax.
+- **Risks and costs to weigh against them:** an evaluator replaces VS's well-tested C/C++ evaluator for Odin modules, so every expression form must be implemented (parser, type system, operators, calls into the debuggee); Concord is a thin-documented, in-proc API that can break across VS updates; scoping the evaluator to Odin modules only is required (Phase F applies); and `msvsmon` remote/dump debugging would need the component deployed there too. The prototype's job is to measure which of these benefits a **visualizer plus formatter** already delivers (Phase C, D) so the evaluator is justified only for what remains (mainly expression syntax and call-stack names).
+
+**Phase G: write-up and decision**
+- [ ] G1 Cost figures recorded as for M0: calendar time, active time, tokens, from the transcript (the "M0 cost" method), plus the code size of the component.
+- [ ] G2 Write-up in this file and in `docs/pitfalls.md`: what works, what does not, how it deploys in the VSIX (asset, files, load conditions), maintenance risk across VS updates (compile references, `.vsdconfig` schema), and what it would do to M6 and the 100-project goal (none expected; confirm).
+- [ ] G3 Findings added to the `visual-studio-2026-extensions` skill (`references/pitfalls.md`, Debugging) and the M5 notes on slices and scalar names corrected where this milestone changes them.
+- [ ] G4 The benefits list above re-scored with what was learned (delivered by the prototype / needs an evaluator / not possible), with a cost estimate for an evaluator if any benefit remains worth it.
+- [ ] G5 Recommendation proposed to the user: a real milestone (with scope and cost estimate), a reduced one (for example slices and dynamic arrays only), an evaluator milestone for the remaining benefits, or dropping it.
 
 ### M6 Multi-project
 - [ ] Source and Link references implemented per Reference design; tier-1 tests for closure, duplicates, cycles.
