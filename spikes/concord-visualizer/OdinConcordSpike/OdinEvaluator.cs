@@ -45,6 +45,30 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         ["char *"] = "cstring",
     };
 
+    private static readonly Regex m_Number = new(@"^\s*(0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled);
+
+    // Odin scalar names back to the PDB's C names (the first Odin name of each pair in m_ScalarNames is the display guess).
+    private static readonly Dictionary<string, string> m_OdinToC = new()
+    {
+        ["int"] = "__int64",
+        ["i64"] = "__int64",
+        ["uint"] = "unsigned __int64",
+        ["u64"] = "unsigned __int64",
+        ["uintptr"] = "unsigned __int64",
+        ["f32"] = "float",
+        ["f64"] = "double",
+        ["rune"] = "char32_t",
+        ["u8"] = "unsigned char",
+        ["i32"] = "int",
+        ["u32"] = "unsigned int",
+        ["i16"] = "short",
+        ["u16"] = "unsigned short",
+        ["i8"] = "signed char",
+        ["cstring"] = "char *",
+    };
+
+    private const ulong MaxMapCapacity = 1UL << 20;
+
     private static int m_SequenceLogCount;
     private static int m_PerfCalls;
     private static long m_PerfItems;
@@ -236,6 +260,12 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             return;
         }
 
+        if (result.GetDataItem<MapData>() is MapData map)
+        {
+            GetMapChildren((DkmSuccessEvaluationResult)result, map, workList, inspectionContext, completionRoutine);
+            return;
+        }
+
         DkmEvaluationResult target = result.GetDataItem<RetypeData>() is RetypeData retyped ? retyped.Original : result;
         target.GetChildren(workList, initialRequestSize, inspectionContext, children =>
         {
@@ -274,6 +304,10 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         {
             sequence.GetItems(workList, startIndex, count, completionRoutine);
         }
+        else if (enumContext.GetDataItem<MapEnum>() is MapEnum mapEnum)
+        {
+            mapEnum.GetItems(this, workList, startIndex, count, completionRoutine);
+        }
         else
         {
             enumContext.GetItems(workList, startIndex, count, completionRoutine);
@@ -282,9 +316,9 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
     public void SetValueAsString(DkmEvaluationResult result, string value, int timeout, out string errorText)
     {
-        if (result.GetDataItem<SequenceData>() is not null)
+        if (result.GetDataItem<SequenceData>() is not null || result.GetDataItem<MapData>() is not null)
         {
-            errorText = "Odin slices and dynamic arrays cannot be assigned from the debugger window.";
+            errorText = "Odin slices, dynamic arrays and maps cannot be assigned from the debugger window.";
             return;
         }
 
@@ -296,7 +330,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
     public string GetUnderlyingString(DkmEvaluationResult result)
     {
-        if (result.GetDataItem<SequenceData>() is not null)
+        if (result.GetDataItem<SequenceData>() is not null || result.GetDataItem<MapData>() is not null)
         {
             return string.Empty;
         }
@@ -334,6 +368,11 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             if (result is not DkmSuccessEvaluationResult success || success.Type is null)
             {
                 return result;
+            }
+
+            if (TryParseMapType(success.Type, out string mapKey, out string mapValue))
+            {
+                return TransformMap(success, mapKey, mapValue) ?? result;
             }
 
             bool dynamic = false;
@@ -579,6 +618,299 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             null);
     }
 
+    // `map[K]V`: the PDB gives only the type name, so keys and values are read the way Odin's runtime lays them out
+    // (base/dynamic_map_internal.odin): data = pointer | log2(capacity) in the low 6 bits; keys, values, then hashes follow
+    // each other as arrays of 64-byte cells; a slot is used when its hash is non-zero and its top bit is clear.
+    private static bool TryParseMapType(string type, out string key, out string value)
+    {
+        key = value = string.Empty;
+        if (!type.StartsWith("map[", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        int depth = 0;
+        for (int i = 3; i < type.Length; i++)
+        {
+            if (type[i] == '[')
+            {
+                depth++;
+            }
+            else if (type[i] == ']')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    key = type.Substring(4, i - 4);
+                    value = type.Substring(i + 1);
+                    return key.Length > 0 && value.Length > 0;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Odin type name back to the C name the native evaluator understands (composites already share the PDB's spelling).
+    private static string ToCType(string odin)
+    {
+        if (odin.StartsWith("^", StringComparison.Ordinal))
+        {
+            return ToCType(odin.Substring(1)) + " *";
+        }
+
+        return m_OdinToC.TryGetValue(odin, out string? c) ? c : odin;
+    }
+
+    private static ulong CellSize(ulong size)
+    {
+        return size > 0 && size < 64 ? 64 : Math.Max(64, (size + 63) / 64 * 64);
+    }
+
+    private static ulong CellArrayBytes(ulong capacity, ulong size)
+    {
+        ulong perCell = size > 0 && size < 64 ? 64 / size : 1;
+        return (capacity + perCell - 1) / perCell * CellSize(size);
+    }
+
+    private static ulong ElementOffset(ulong index, ulong size)
+    {
+        if (size > 0 && size < 64)
+        {
+            ulong perCell = 64 / size;
+            return index / perCell * 64 + index % perCell * size;
+        }
+
+        return index * CellSize(size);
+    }
+
+    private static ulong ParseUnsigned(string? text)
+    {
+        Match match = m_Number.Match(text ?? string.Empty);
+        if (!match.Success)
+        {
+            throw new FormatException($"no number in '{text}'");
+        }
+
+        string number = match.Value;
+        return number.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToUInt64(number.Substring(2), 16) : ulong.Parse(number);
+    }
+
+    private static DkmEvaluationResult? TransformMap(DkmSuccessEvaluationResult success, string key, string value)
+    {
+        Match match = m_Len.Match(success.Value);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        long length = ParseNumber(match.Groups["len"].Value);
+        if (!IsSane(length, null))
+        {
+            return null;
+        }
+
+        return DkmSuccessEvaluationResult.Create(
+            success.InspectionContext,
+            success.StackFrame,
+            success.Name,
+            success.FullName,
+            DkmEvaluationResultFlags.Expandable | DkmEvaluationResultFlags.ReadOnly,
+            $"{{len={length}}}",
+            null,
+            success.Type,
+            success.Category,
+            success.Access,
+            success.StorageType,
+            success.TypeModifierFlags,
+            success.Address,
+            null,
+            null,
+            new MapData(key, value, length));
+    }
+
+    // Evaluates all expressions with the C++ evaluator at once (never chained: see EvaluateWithRewrites) and calls `done`
+    // from the last completion with the successful results (null where one failed).
+    private static void EvalBatch(
+        DkmInspectionContext inspectionContext,
+        DkmWorkList workList,
+        DkmStackWalkFrame stackFrame,
+        string[] expressions,
+        Action<DkmSuccessEvaluationResult?[]> done)
+    {
+        var results = new DkmSuccessEvaluationResult?[expressions.Length];
+        if (expressions.Length == 0)
+        {
+            done(results);
+            return;
+        }
+
+        int pending = expressions.Length;
+        for (int i = 0; i < expressions.Length; i++)
+        {
+            int slot = i;
+            DkmLanguageExpression expression = DkmLanguageExpression.Create(inspectionContext.Language, DkmEvaluationFlags.TreatAsExpression, expressions[i], new RetryMarker());
+            inspectionContext.EvaluateExpression(workList, expression, stackFrame, result =>
+            {
+                results[slot] = result.ErrorCode == 0 ? result.ResultObject as DkmSuccessEvaluationResult : null;
+                if (Interlocked.Decrement(ref pending) == 0)
+                {
+                    done(results);
+                }
+            });
+        }
+    }
+
+    private void GetMapChildren(
+        DkmSuccessEvaluationResult result,
+        MapData map,
+        DkmWorkList workList,
+        DkmInspectionContext inspectionContext,
+        DkmCompletionRoutine<DkmGetChildrenAsyncResult> completionRoutine)
+    {
+        DkmEvaluationResult[] pseudo = [Pseudo(result, inspectionContext, "[len]", "len", map.Length.ToString())];
+
+        void OnlyPseudo()
+        {
+            completionRoutine(new DkmGetChildrenAsyncResult(
+                pseudo,
+                DkmEvaluationResultEnumContext.Create(pseudo.Length, result.StackFrame, inspectionContext, new MapEnum(result, pseudo, [], null))));
+        }
+
+        string keyC = ToCType(map.KeyType);
+        string valueC = ToCType(map.ValueType);
+        string[] expressions = [$"{result.FullName}.data", $"sizeof({keyC})", $"sizeof({valueC})"];
+        EvalBatch(inspectionContext, workList, result.StackFrame, expressions, values =>
+        {
+            try
+            {
+                if (values[0] is null || values[1] is null || values[2] is null)
+                {
+                    SpikeLog.Write($"map {result.FullName} : {result.Type}: header evaluations failed ({Describe(values[0])} | {Describe(values[1])} | {Describe(values[2])})");
+                    OnlyPseudo();
+                    return;
+                }
+
+                ulong data = ParseUnsigned(values[0]!.Value);
+                ulong keySize = ParseUnsigned(values[1]!.Value);
+                ulong valueSize = ParseUnsigned(values[2]!.Value);
+                ulong capacity = data == 0 ? 0 : 1UL << (int)(data & 63);
+                if (capacity == 0 || capacity > MaxMapCapacity)
+                {
+                    SpikeLog.Write($"map {result.FullName}: capacity {capacity} (data=0x{data:x}) not shown");
+                    OnlyPseudo();
+                    return;
+                }
+
+                ulong keys = data & ~63UL;
+                ulong vals = keys + CellArrayBytes(capacity, keySize);
+                ulong hashes = vals + CellArrayBytes(capacity, valueSize);
+                byte[] hashBytes = new byte[capacity * 8];
+                inspectionContext.RuntimeInstance.Process.ReadMemory(hashes, DkmReadMemoryFlags.None, hashBytes);
+
+                var slots = new List<ulong>();
+                for (ulong i = 0; i < capacity; i++)
+                {
+                    ulong hash = BitConverter.ToUInt64(hashBytes, (int)(i * 8));
+                    if (hash != 0 && (hash >> 63) == 0)
+                    {
+                        slots.Add(i);
+                    }
+                }
+
+                SpikeLog.Write($"map {result.FullName} : {result.Type}: cap={capacity} used={slots.Count} keySize={keySize} valueSize={valueSize} keys=0x{keys:x} vals=0x{vals:x} hashes=0x{hashes:x}");
+                var layout = new MapLayout(keys, vals, keySize, valueSize, keyC, valueC);
+                completionRoutine(new DkmGetChildrenAsyncResult(
+                    pseudo,
+                    DkmEvaluationResultEnumContext.Create(pseudo.Length + slots.Count, result.StackFrame, inspectionContext, new MapEnum(result, pseudo, slots, layout))));
+            }
+            catch (Exception ex)
+            {
+                SpikeLog.Write($"map children of {result.FullName} failed: {ex}");
+                OnlyPseudo();
+            }
+        });
+    }
+
+    private void GetMapItems(
+        MapEnum map,
+        DkmWorkList workList,
+        int startIndex,
+        int count,
+        DkmCompletionRoutine<DkmEvaluationEnumAsyncResult> completionRoutine)
+    {
+        var items = new List<DkmEvaluationResult>();
+        int index = startIndex;
+        while (items.Count < count && index < map.Pseudo.Count)
+        {
+            items.Add(map.Pseudo[index]);
+            index++;
+        }
+
+        int firstSlot = index - map.Pseudo.Count;
+        int slotCount = Math.Max(0, Math.Min(count - items.Count, map.Slots.Count - firstSlot));
+        if (slotCount == 0 || map.Layout is null)
+        {
+            completionRoutine(new DkmEvaluationEnumAsyncResult(items.ToArray()));
+            return;
+        }
+
+        MapLayout layout = map.Layout;
+        DkmInspectionContext inspectionContext = map.Parent.InspectionContext;
+        var expressions = new string[slotCount * 2];
+        for (int i = 0; i < slotCount; i++)
+        {
+            ulong slot = map.Slots[firstSlot + i];
+            expressions[i * 2] = $"*({layout.KeyC}*)0x{layout.Keys + ElementOffset(slot, layout.KeySize):x}";
+            expressions[i * 2 + 1] = $"*({layout.ValueC}*)0x{layout.Values + ElementOffset(slot, layout.ValueSize):x}";
+        }
+
+        EvalBatch(inspectionContext, workList, map.Parent.StackFrame, expressions, results =>
+        {
+            try
+            {
+                for (int i = 0; i < slotCount; i++)
+                {
+                    DkmSuccessEvaluationResult? key = results[i * 2];
+                    DkmSuccessEvaluationResult? value = results[i * 2 + 1];
+                    if (key is null || value is null)
+                    {
+                        SpikeLog.Write($"map entry failed: {expressions[i * 2]} -> {Describe(key)}; {expressions[i * 2 + 1]} -> {Describe(value)}");
+                        items.Add(Pseudo(map.Parent, inspectionContext, $"[slot {map.Slots[firstSlot + i]}]", "?", "<unreadable>"));
+                        continue;
+                    }
+
+                    DkmEvaluationResult transformed = Transform(value);
+                    DkmSuccessEvaluationResult shown = transformed as DkmSuccessEvaluationResult ?? value;
+                    items.Add(DkmSuccessEvaluationResult.Create(
+                        inspectionContext,
+                        map.Parent.StackFrame,
+                        $"[{key.Value}]",
+                        value.FullName,
+                        shown.Flags,
+                        shown.Value,
+                        shown.EditableValue,
+                        shown.Type,
+                        shown.Category,
+                        shown.Access,
+                        shown.StorageType,
+                        shown.TypeModifierFlags,
+                        shown.Address,
+                        shown.CustomUIVisualizers,
+                        shown.ExternalModules,
+                        new RetypeData(shown)));
+                }
+
+                completionRoutine(new DkmEvaluationEnumAsyncResult(items.ToArray()));
+            }
+            catch (Exception ex)
+            {
+                SpikeLog.Write($"map items failed: {ex}");
+                completionRoutine(new DkmEvaluationEnumAsyncResult(items.ToArray()));
+            }
+        });
+    }
+
     private static string Describe(DkmEvaluationResult? result)
     {
         return result is DkmSuccessEvaluationResult s
@@ -594,6 +926,57 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         public long? Capacity { get; } = capacity;
 
         public bool IsDynamic { get; } = isDynamic;
+    }
+
+    // Marks a map result; GetChildren decodes the runtime layout.
+    private sealed class MapData(string keyType, string valueType, long length) : DkmDataItem
+    {
+        public string KeyType { get; } = keyType;
+
+        public string ValueType { get; } = valueType;
+
+        public long Length { get; } = length;
+    }
+
+    private sealed class MapLayout(ulong keys, ulong values, ulong keySize, ulong valueSize, string keyC, string valueC)
+    {
+        public ulong Keys { get; } = keys;
+
+        public ulong Values { get; } = values;
+
+        public ulong KeySize { get; } = keySize;
+
+        public ulong ValueSize { get; } = valueSize;
+
+        public string KeyC { get; } = keyC;
+
+        public string ValueC { get; } = valueC;
+    }
+
+    // `[len]` followed by one `[key]` child per used slot, whose key and value are read on demand.
+    private sealed class MapEnum(
+        DkmSuccessEvaluationResult parent,
+        IReadOnlyList<DkmEvaluationResult> pseudo,
+        IReadOnlyList<ulong> slots,
+        MapLayout? layout) : DkmDataItem
+    {
+        public DkmSuccessEvaluationResult Parent { get; } = parent;
+
+        public IReadOnlyList<DkmEvaluationResult> Pseudo { get; } = pseudo;
+
+        public IReadOnlyList<ulong> Slots { get; } = slots;
+
+        public MapLayout? Layout { get; } = layout;
+
+        public void GetItems(
+            OdinEvaluator evaluator,
+            DkmWorkList workList,
+            int startIndex,
+            int count,
+            DkmCompletionRoutine<DkmEvaluationEnumAsyncResult> completionRoutine)
+        {
+            evaluator.GetMapItems(this, workList, startIndex, count, completionRoutine);
+        }
     }
 
     // Tags an expression as an attempt issued by EvaluateWithRewrites.

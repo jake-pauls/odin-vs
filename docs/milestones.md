@@ -134,7 +134,7 @@ Slice and dynamic-array display in Locals/Watch is a must-have, and natvis canno
 - [x] D2 (done by building the evaluator within the agreed depth; verified in Exp, spike 0.0.7: `len(x)`, `cap(x)`, `a[i]`, `things[0].tags[1]`. Cost: three hangs/crashes from Concord re-entrancy, see FINDINGS.md and the skill's `concord-debugger.md`; map `a[i]` not done) If D1 needs more than a formatter hook (an evaluator), record the extra work in rough terms and stop; do not build it.
 
 **Phase E: stretch types (each its own result: works / partly / does not)**
-- [ ] E1 `map[K]V` as key/value pairs with `len`.
+- [x] E1 (WORKS for `map[string]int` and `map[int]string`, verified in Exp by the user on spike 0.0.8, Locals and Watch: `{len=2}`, `["ann"]=90`, `["bob"]=75`, `[1]="one"`, `[2]="two"`, string values expand. Decoded from Odin's runtime layout by reading the hash array from the process. NOT tested: key/value sizes that do not divide 64 (cell padding path), struct keys, deleted slots (tombstones), maps with more than 8 slots, nested maps; capacity above 2^20 is not shown) `map[K]V` as key/value pairs with `len`.
 - [ ] E2 `any` (typeid and data), `union` (active variant), `enum` (names instead of numbers), `bit_set` (member list).
 - [ ] E3 Multi-pointer `[^]T` (needs a count source), fixed `[N]T` (check what the native engine already shows), `matrix[R,C]T`.
 
