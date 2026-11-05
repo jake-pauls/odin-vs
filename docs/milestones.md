@@ -117,9 +117,9 @@ Slice and dynamic-array display in Locals/Watch is a must-have, and natvis canno
 - [x] A4 (GO, nothing impossible; ticks are proposals until the PR merges) Gate result recorded in `spikes/concord-visualizer/FINDINGS.md` (each of A1-A3: feasible / caveat / impossible, with evidence) and a go/no-go for Phase B.
 
 **Phase B: walking skeleton**
-- [ ] B0 Test program `spikes/concord-visualizer/sample/` (Odin project, Debug) with locals of every type in scope: `[]int`, `[]string`, `[dynamic]int`, `[dynamic]string`, empty and nil slices, a large dynamic array, nested (`[]struct`), plus the stretch types. Builds with the real SDK and hits a breakpoint under F5 (user, Exp).
-- [ ] B1 A do-nothing Concord component in the VSIX loads on F5 (proof: a line in `%LOCALAPPDATA%\OdinVS\odinvs.log` or Output, written from the component) and does not load when no debug session is running; the VSIX still installs per the Exp sequence in the skill.
-- [ ] B2 The component sees the sample's locals and logs the type name and member layout it receives for each one (what the PDB gives it, versus what natvis could match). This decides whether Phase C can key on `[]int` and `[dynamic]string` literally.
+- [x] B0 (passed 2026-11-04; build + F5 break seen in Exp; spikes/concord-visualizer/FINDINGS.md) Test program `spikes/concord-visualizer/sample/` (Odin project, Debug) with locals of every type in scope: `[]int`, `[]string`, `[dynamic]int`, `[dynamic]string`, empty and nil slices, a large dynamic array, nested (`[]struct`), plus the stretch types. Builds with the real SDK and hits a breakpoint under F5 (user, Exp).
+- [x] B1 (passed 2026-11-04; log from inside Exp devenv; FINDINGS.md) A do-nothing Concord component in the VSIX loads on F5 (proof: a line in `%LOCALAPPDATA%\OdinVS\odinvs.log` or Output, written from the component) and does not load when no debug session is running; the VSIX still installs per the Exp sequence in the skill.
+- [x] B2 (passed 2026-11-04; log lists all 28 locals with type names; FINDINGS.md) The component sees the sample's locals and logs the type name and member layout it receives for each one (what the PDB gives it, versus what natvis could match). This decides whether Phase C can key on `[]int` and `[dynamic]string` literally.
 
 **Phase C: slices and dynamic arrays (must-have)**
 - [ ] C1 `[]T` shows in Locals as `{len=N}` (or similar) and expands to its elements `[0]..[N-1]` with the right values, for `int`, `string` and a struct element type.

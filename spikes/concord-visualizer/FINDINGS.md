@@ -40,3 +40,20 @@ Plan: restore `Microsoft.VisualStudio.Debugger.Engine` and `Microsoft.VSSDK.Debu
 - A1 feasible, A2 feasible with caveats 1-3, A3 feasible. No "impossible" found, so Phase B can start once the package restore is approved.
 - The decisive unknowns, to be answered by B1/B2/C rather than more reading: (1) asset type and load on 18.11; (2) the compiler/language information the Odin PDB gives (routing key); (3) whether the C++ evaluator can be delegated to; (4) whether Autos/DataTips still work when our evaluator is involved.
 - If (3) is "no", the likely outcome of the milestone is: a visualizer (memory reads) can deliver slices/dynamic arrays and type names; Odin expression syntax needs a parser of our own, which is the evaluator-milestone cost to estimate in G4.
+
+## Phase B: walking skeleton (2026-11-04, Exp 18.11, spike VSIX 0.0.1 and 0.0.2; user ran F5, evidence is `%LOCALAPPDATA%\OdinVS\concord-spike.log` and a Locals screenshot)
+
+### B0 Sample: passes
+`sample/ConcordSample.sln` + `src/main.odin` build with real `odin` (`-debug`) via `Odin.Sdk` 0.3.3-local and F5 stops at the breakpoint. Covers `[]int`, `[]string`, empty and nil slices, `[dynamic]int|string`, an empty dynamic array with cap 8, a 100,000-element one, `[]Thing` (struct with a slice and a dynamic array), and the stretch types.
+
+### B1 Component loads: passes
+- The spike VSIX (`DebuggerEngineExtension` asset + the compiled `.vsdconfig` + `OdinConcordSpike.dll`, net472, built with VS MSBuild) installs into Exp next to the product VSIX; the component is constructed inside Exp's `devenv` (the process id in the log is devenv's) on the first debug event, and the log is empty until a debug session starts. So the asset type is right on 18.11 and the component is in-proc.
+- Packaging gotcha: `vsdconfigtool` writes `bin\...\X.vsdconfig` but the VSIX did not contain it until it was added as `<Content ... IncludeInVSIX=true>`; check the `.vsix` zip listing.
+
+### B2 What the component sees: passes
+- **Module compiler id is empty:** `ConcordSample.exe` loads with symbols and `CompilerId` vendor/language both `Guid.Empty`; the debugger resolves language per symbol (`IDkmSymbolCompilerIdQuery`), and the frames report `DkmLanguageId.C`.
+- **Delegation to the C++ evaluator works (A2 caveat 1 answered):** a `[LanguageId = DkmLanguageId.C]` `IDkmLanguageExpressionEvaluator` at component level 9992100 is called before the C++ EE for `GetFrameLocals`, `EvaluateExpression` and `GetChildren`; chaining with `inspectionContext.GetFrameLocals(...)`, `.EvaluateExpression(...)`, `result.GetChildren(...)` reaches the native evaluator and Locals/Watch looked normal to the user (pass-through). This also means a component can read the native EE's `DkmSuccessEvaluationResult`s (Name, Type, Value, FullName, Flags, Address) and replace them.
+- **Type names the PDB/EE hand us** (28 locals): composites are already Odin-shaped: `[]int`, `[]string`, `[]main::Thing`, `[dynamic]int`, `[dynamic]string`, `map[int]string`, `map[string]int`, `bit_set[main::Flag]`, `matrix[2, 2]f32`, `main::Shape`, `main::Color`, `runtime::Context %`, `any`. Scalars are C names: `__int64`, `float`, `bool`, `char32_t` (rune), `char *` (cstring), `__int64 *` (`^int` and `[^]int`), `__int64[4]` (`[4]int`), `unsigned char`.
+- **Display today:** slice `{data=0x... {10} len=3 }`, dynamic `{data=... {1} len=4 cap=4 ...}`; `flags` bit_set already shows `{Read=true Write=false Exec=true }`; `color` enum shows `Green (1)`; `fixed` shows `{5, 6, 7, 8}`; `shape` union shows `tag` plus every variant; `names`/`scores` maps show garbage keys and values (the map data pointer carries packed bits); `any` shows `{data=... id=...}`; `text` string is `Visualized` by `odin.natvis`.
+- **Watch syntax:** `ints[1]` fails in the C evaluator (error text "no operator [] matches these operands"); a translation layer (Odin expression to `ints.data[1]`, chained to the C++ EE) is the cheap route to Odin expressions.
+- Open for C: whether results carry a usable `Address` (for memory reads), Autos and DataTips.
