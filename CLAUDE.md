@@ -175,6 +175,12 @@ main
 - **Stop-hook or goal feedback is not a reason to cut scope or commit early.** If the only open item needs the user (an Exp check, a decision), say so and wait; do not substitute an easier deliverable.
 - **Scripted edits of CRLF files:** guard every `String.Replace` with a `Contains` check that throws; see `docs/pitfalls.md`. Match the file's own newline.
 - **`git fetch` and `git push` use `$env:GIT_SSH_COMMAND = 'C:/Windows/System32/OpenSSH/ssh.exe'` (rule 9).** A fetch without it fails with `Permission denied (publickey)`.
+- **Load the `visual-studio-2026-extensions` skill (Skill tool) before any VS-facing task** (VSIX, pkgdef, CPS, editor features, debugger). It was not loaded automatically in M5; its references hold the Exp quirks and decompile findings, and the user may not name it. Add VS findings to its `references/pitfalls.md`, project findings to `docs/pitfalls.md`.
+- **Scope every MEF export to the Odin content type** (`[ContentType(OdinContentType.Name)]`) so C#/C++ editing stays untouched. Natvis cannot be scoped (global to the debugger); see M5.5.
+- **Generate real GUIDs** (`[guid]::NewGuid()`) for the VSIX identity, packages, UI contexts and project types. Patterned GUIDs are only acceptable for project IDs inside a sample `.sln` (`tests/samples/OdinSamples.sln` uses `A1111111-0000-4000-8000-00000000000N`).
+- **Find a silent VS failure by logging, then a control.** Log the relevant state from a handler on the same event with `Log.Default` (that is how auto-close was traced to the `BraceCompletion/Enabled` option), and compare against a control (C# in the same Exp) before blaming the platform. An earlier note here called auto-close a platform limit; it was wrong.
+- **Decompile into the session scratchpad,** not `%TEMP%` (a `Remove-Item` there was denied), and search the output with Grep/Read; `Select-String -Recurse` hits long-path errors.
+- **Comment-only edits to shipped files still go into the VSIX.** Say what was and was not reloaded in Exp (the natvis note was XML-checked only).
 - **Odin and debugger facts** (type names in the PDB, what natvis can and cannot match, the `DebugOdin` sample) are in `docs/pitfalls.md`; the milestone for the slice and dynamic-array visualizer prototype is M5.5 in `docs/milestones.md` (branch `m5.5/<slug>`, between M5 and M6).
 
 ## Architecture additions
