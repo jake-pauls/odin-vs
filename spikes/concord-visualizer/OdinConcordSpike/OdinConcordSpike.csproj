@@ -19,6 +19,11 @@
     <PackageReference Include="Microsoft.VSSDK.Debugger.VSDConfigTool" Version="17.14.1051801" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The map layout math lives in OdinVS.Core (tested by OdinMapLayoutTests). The product VSIX already ships OdinVS.Core.dll
+         next to this assembly, so it is not copied into the spike VSIX; the spike VSIX alone no longer works (use merge-vsix-test.ps1). -->
+    <ProjectReference Include="..\..\..\src\OdinVS.Core\OdinVS.Core.csproj" Private="false" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="source.extension.vsixmanifest" />
     <VsdConfigXmlFiles Include="OdinConcordSpike.vsdconfigxml" />
     <!-- The compiled config is produced by vsdconfigtool at build time; ship it next to the assembly. -->

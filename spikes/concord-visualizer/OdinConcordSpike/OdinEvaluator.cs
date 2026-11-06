@@ -7,6 +7,7 @@ using Microsoft.VisualStudio.Debugger;
 using Microsoft.VisualStudio.Debugger.CallStack;
 using Microsoft.VisualStudio.Debugger.ComponentInterfaces;
 using Microsoft.VisualStudio.Debugger.Evaluation;
+using OdinVS.Core;
 
 namespace OdinConcordSpike;
 
@@ -398,10 +399,25 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         var wanted = new List<(int Index, bool Dynamic, int First)>();
         var unions = new List<(int Index, int Expression)>();
         var matrices = new List<(int Index, int First, int Rows, int Columns)>();
+        var stringHeaders = new List<(int Index, int First)>();
         for (int i = 0; i < results.Length; i++)
         {
             if (results[i] is not DkmSuccessEvaluationResult success || success.Type is null)
             {
+                continue;
+            }
+
+            // An Odin string (a `{data, len}` struct): odin.natvis used to show it; the component shows it now (milestone F4).
+            // With an address the header is read from memory in Transform; without one `.data` and `.len` are evaluated here.
+            if (success.Type == OdinStringType)
+            {
+                if ((success.Address?.Value ?? 0) == 0)
+                {
+                    stringHeaders.Add((i, expressions.Count));
+                    expressions.Add($"{success.FullName}.data");
+                    expressions.Add($"{success.FullName}.len");
+                }
+
                 continue;
             }
 
@@ -442,7 +458,10 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
             bool dynamic = m_DynamicType.IsMatch(success.Type);
             bool isHeaderType = dynamic || m_SliceType.IsMatch(success.Type) || TryParseMapType(success.Type, out _, out _);
-            if (!isHeaderType || (dynamic ? m_LenCap.IsMatch(success.Value) : m_Len.IsMatch(success.Value)))
+            // The length is always evaluated, never read from the value text: the text is cut off, and once `string` stopped being
+            // a natvis type (F4) the text of a map or a slice of structs contains the `len=` of nested strings, which a
+            // right-to-left search took for the container's own length (maps showed `len=68169720922112`).
+            if (!isHeaderType)
             {
                 continue;
             }
@@ -461,11 +480,23 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             return;
         }
 
-        int frameIndex = wanted.Count > 0 ? wanted[0].Index : unions.Count > 0 ? unions[0].Index : matrices[0].Index;
+        int frameIndex = wanted.Count > 0
+            ? wanted[0].Index
+            : unions.Count > 0 ? unions[0].Index : matrices.Count > 0 ? matrices[0].Index : stringHeaders[0].Index;
         EvalBatch(inspectionContext, workList, results[frameIndex].StackFrame, expressions.ToArray(), values =>
         {
             try
             {
+                var strings = new Dictionary<DkmEvaluationResult, string>();
+                foreach ((int index, int first) in stringHeaders)
+                {
+                    if (values[first] is not null && values[first + 1] is not null
+                        && ReadStringBody(inspectionContext.RuntimeInstance.Process, ParseUnsigned(values[first]!.Value), (long)ParseUnsigned(values[first + 1]!.Value)) is string text)
+                    {
+                        strings[results[index]] = text;
+                    }
+                }
+
                 var matrixRows = new Dictionary<DkmEvaluationResult, string[]>();
                 foreach ((int index, int first, int rows, int columns) in matrices)
                 {
@@ -529,7 +560,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                     headers[results[index]] = [lenValue, dynamic ? capValue : -1];
                 }
 
-                done(TransformAll(results, headers, variants, matrixRows));
+                done(TransformAll(results, headers, variants, matrixRows, strings));
             }
             catch (Exception ex)
             {
@@ -543,13 +574,14 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         DkmEvaluationResult[] results,
         Dictionary<DkmEvaluationResult, long[]>? headers = null,
         Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>? variants = null,
-        Dictionary<DkmEvaluationResult, string[]>? matrices = null)
+        Dictionary<DkmEvaluationResult, string[]>? matrices = null,
+        Dictionary<DkmEvaluationResult, string>? strings = null)
     {
         long started = Stopwatch.GetTimestamp();
         var transformed = new DkmEvaluationResult[results.Length];
         for (int i = 0; i < results.Length; i++)
         {
-            transformed[i] = Transform(results[i], headers, variants, matrices);
+            transformed[i] = Transform(results[i], headers, variants, matrices, strings);
         }
 
         Interlocked.Add(ref m_PerfOurTicks, Stopwatch.GetTimestamp() - started);
@@ -569,13 +601,22 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         DkmEvaluationResult result,
         Dictionary<DkmEvaluationResult, long[]>? headers = null,
         Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>? variants = null,
-        Dictionary<DkmEvaluationResult, string[]>? matrices = null)
+        Dictionary<DkmEvaluationResult, string[]>? matrices = null,
+        Dictionary<DkmEvaluationResult, string>? strings = null)
     {
         try
         {
             if (result is not DkmSuccessEvaluationResult success || success.Type is null)
             {
                 return result;
+            }
+
+            if (success.Type == OdinStringType)
+            {
+                string? text = strings is not null && strings.TryGetValue(success, out string? resolved)
+                    ? resolved
+                    : ReadStringHeader(success.RuntimeInstance.Process, success.Address?.Value ?? 0);
+                return text is null ? result : ShowString(success, text);
             }
 
             Match matrix = m_Matrix.Match(success.Type);
@@ -627,6 +668,110 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             SpikeLog.Write($"transform failed for {result.FullName}: {ex}");
             return result;
         }
+    }
+
+    // Odin `string` is `Raw_String {data: [^]byte, len: int}` (base/runtime/core.odin, checked by OdinMapLayoutTests). It has no
+    // terminating NUL, so the text is read by length; at most MaxStringBytes are shown, with `...` after them.
+    private const string OdinStringType = "string";
+    private const int MaxStringBytes = 256;
+
+    private static string? ReadStringHeader(DkmProcess process, ulong address)
+    {
+        if (address == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            byte[] header = new byte[16];
+            process.ReadMemory(address, DkmReadMemoryFlags.None, header);
+            return ReadStringBody(process, BitConverter.ToUInt64(header, 0), BitConverter.ToInt64(header, 8));
+        }
+        catch (Exception ex)
+        {
+            SpikeLog.Write($"reading a string header at 0x{address:x} failed, shown natively: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static string? ReadStringBody(DkmProcess process, ulong data, long length)
+    {
+        if (length < 0 || length > MaxSaneLength || (data == 0 && length > 0))
+        {
+            return null;
+        }
+
+        try
+        {
+            int take = (int)Math.Min(length, MaxStringBytes);
+            byte[] bytes = new byte[take];
+            if (take > 0)
+            {
+                process.ReadMemory(data, DkmReadMemoryFlags.None, bytes);
+            }
+
+            var text = new System.Text.StringBuilder("\"");
+            foreach (char c in System.Text.Encoding.UTF8.GetString(bytes))
+            {
+                switch (c)
+                {
+                    case '"':
+                        text.Append("\\\"");
+                        break;
+                    case '\\':
+                        text.Append("\\\\");
+                        break;
+                    case '\n':
+                        text.Append("\\n");
+                        break;
+                    case '\r':
+                        text.Append("\\r");
+                        break;
+                    case '\t':
+                        text.Append("\\t");
+                        break;
+                    default:
+                        text.Append(c < ' ' ? $"\\x{(int)c:x2}" : c.ToString());
+                        break;
+                }
+            }
+
+            text.Append('"');
+            if (length > take)
+            {
+                text.Append("...");
+            }
+
+            return text.ToString();
+        }
+        catch (Exception ex)
+        {
+            SpikeLog.Write($"reading string bytes at 0x{data:x} (len {length}) failed, shown natively: {ex.Message}");
+            return null;
+        }
+    }
+
+    // The string text as the value; the `data` and `len` fields stay available as children of the original result.
+    private static DkmEvaluationResult ShowString(DkmSuccessEvaluationResult success, string text)
+    {
+        return DkmSuccessEvaluationResult.Create(
+            success.InspectionContext,
+            success.StackFrame,
+            success.Name,
+            success.FullName,
+            DkmEvaluationResultFlags.Expandable | DkmEvaluationResultFlags.ReadOnly,
+            text,
+            null,
+            success.Type,
+            success.Category,
+            success.Access,
+            success.StorageType,
+            success.TypeModifierFlags,
+            success.Address,
+            null,
+            null,
+            new RetypeData(success));
     }
 
     private static string TrimFloat(string text)
@@ -1061,29 +1206,6 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         yield return $"*({cType.Substring(cType.LastIndexOf("::", StringComparison.Ordinal) + 2)}*){at}";
     }
 
-    private static ulong CellSize(ulong size)
-    {
-        return size > 0 && size < 64 ? 64 : Math.Max(64, (size + 63) / 64 * 64);
-    }
-
-    // Where the array after a cell array starts: Odin indexes `capacity` as an element (map_cell_index_dynamic), so a partly
-    // filled last cell is skipped only up to its used part (12-byte keys, capacity 8: 100 bytes, not two whole cells).
-    private static ulong CellArrayBytes(ulong capacity, ulong size)
-    {
-        return ElementOffset(capacity, size);
-    }
-
-    private static ulong ElementOffset(ulong index, ulong size)
-    {
-        if (size > 0 && size < 64)
-        {
-            ulong perCell = 64 / size;
-            return index / perCell * 64 + index % perCell * size;
-        }
-
-        return index * CellSize(size);
-    }
-
     private static bool TryParseSigned(string? text, out long value)
     {
         value = 0;
@@ -1124,12 +1246,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     private static DkmEvaluationResult? TransformMap(DkmSuccessEvaluationResult success, string key, string value, Dictionary<DkmEvaluationResult, long[]>? headers)
     {
         long length;
-        Match match = m_Len.Match(success.Value);
-        if (match.Success)
-        {
-            length = ParseNumber(match.Groups["len"].Value);
-        }
-        else if (headers is not null && headers.TryGetValue(success, out long[]? resolved))
+        if (headers is not null && headers.TryGetValue(success, out long[]? resolved))
         {
             length = resolved[0];
         }
@@ -1229,7 +1346,8 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 ulong data = ParseUnsigned(values[0]!.Value);
                 ulong keySize = ParseUnsigned(values[1]!.Value);
                 ulong valueSize = ParseUnsigned(values[2]!.Value);
-                ulong capacity = data == 0 ? 0 : 1UL << (int)(data & 63);
+                OdinMapLayout.MapArrays arrays = OdinMapLayout.Arrays(data, keySize, valueSize);
+                ulong capacity = arrays.Capacity;
                 if (capacity == 0 || capacity > MaxMapCapacity)
                 {
                     SpikeLog.Write($"map {result.FullName}: capacity {capacity} (data=0x{data:x}) not shown");
@@ -1237,9 +1355,9 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                     return;
                 }
 
-                ulong keys = data & ~63UL;
-                ulong vals = keys + CellArrayBytes(capacity, keySize);
-                ulong hashes = vals + CellArrayBytes(capacity, valueSize);
+                ulong keys = arrays.Keys;
+                ulong vals = arrays.Values;
+                ulong hashes = arrays.Hashes;
                 byte[] hashBytes = new byte[capacity * 8];
                 inspectionContext.RuntimeInstance.Process.ReadMemory(hashes, DkmReadMemoryFlags.None, hashBytes);
 
@@ -1247,7 +1365,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 for (ulong i = 0; i < capacity; i++)
                 {
                     ulong hash = BitConverter.ToUInt64(hashBytes, (int)(i * 8));
-                    if (hash != 0 && (hash >> 63) == 0)
+                    if (OdinMapLayout.IsUsedHash(hash))
                     {
                         slots.Add(i);
                     }
@@ -1299,9 +1417,9 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         {
             ulong slot = map.Slots[firstSlot + i];
             firstVariant[i * 2] = expressions.Count;
-            expressions.AddRange(CastVariants(layout.KeyC, layout.Keys + ElementOffset(slot, layout.KeySize)));
+            expressions.AddRange(CastVariants(layout.KeyC, layout.Keys + OdinMapLayout.ElementOffset(slot, layout.KeySize)));
             firstVariant[i * 2 + 1] = expressions.Count;
-            expressions.AddRange(CastVariants(layout.ValueC, layout.Values + ElementOffset(slot, layout.ValueSize)));
+            expressions.AddRange(CastVariants(layout.ValueC, layout.Values + OdinMapLayout.ElementOffset(slot, layout.ValueSize)));
         }
 
         firstVariant[slotCount * 2] = expressions.Count;
@@ -1339,12 +1457,22 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                         continue;
                     }
 
-                    DkmEvaluationResult transformed = Transform(value);
+                    // String keys and values are Odin strings: their header is at a known address, so they are read from memory
+                    // (no further evaluation, which would be a third level deep) instead of showing the `{data, len}` struct.
+                    ulong slotIndex = map.Slots[firstSlot + i];
+                    DkmProcess process = inspectionContext.RuntimeInstance.Process;
+                    string? keyText = layout.KeyC == OdinStringType
+                        ? ReadStringHeader(process, layout.Keys + OdinMapLayout.ElementOffset(slotIndex, layout.KeySize)) ?? key.Value
+                        : key.Value;
+                    DkmEvaluationResult transformed = layout.ValueC == OdinStringType
+                        && ReadStringHeader(process, layout.Values + OdinMapLayout.ElementOffset(slotIndex, layout.ValueSize)) is string valueText
+                            ? ShowString(value, valueText)
+                            : Transform(value);
                     DkmSuccessEvaluationResult shown = transformed as DkmSuccessEvaluationResult ?? value;
                     items.Add(DkmSuccessEvaluationResult.Create(
                         inspectionContext,
                         map.Parent.StackFrame,
-                        $"[{key.Value}]",
+                        $"[{keyText}]",
                         value.FullName,
                         shown.Flags,
                         shown.Value,

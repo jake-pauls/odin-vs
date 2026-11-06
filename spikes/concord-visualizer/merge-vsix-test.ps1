@@ -3,6 +3,7 @@
 # spikes\concord-visualizer\OdinConcordSpike\bin\merged\OdinVS.Merged.vsix. Nothing under src\ is changed.
 # Usage: spikes\concord-visualizer\merge-vsix-test.ps1 [-Install] [-NoLaunch] [-VsRoot <path>]
 #   -Solution  the .sln Exp opens after the install (default: sample\ConcordSample.sln)
+#   -KeepNatvisString  leave the product's `string` natvis entry in the copy (default: the copy ships an empty natvis)
 #   -VersionBump  how far above the product's patch version the merged copy is (VS ignores a reinstall of the same version)
 #   -Install   also removes the spike VSIX from Exp, installs ONLY the merged VSIX there and launches Exp on the sample
 param(
@@ -10,6 +11,7 @@ param(
     [switch] $NoLaunch,
     [string] $Solution = '',
     [int] $VersionBump = 1,
+    [switch] $KeepNatvisString,
     [string] $VsRoot = 'C:\Program Files\Microsoft Visual Studio\18\Community'
 )
 
@@ -72,6 +74,14 @@ $target = [IO.Compression.ZipFile]::Open($merged, 'Create')
 try {
     foreach ($entry in $source.Entries) {
         if ($entry.FullName -in 'extension.vsixmanifest', '[Content_Types].xml', 'manifest.json', 'catalog.json') { continue }
+        if ($entry.FullName -eq 'Visualizers/odin.natvis' -and -not $KeepNatvisString) {
+            # The component shows Odin strings itself (behind the Odin gate); the global natvis entry also changed C++ types named `string`.
+            $copy = $target.CreateEntry($entry.FullName)
+            $w = New-Object IO.StreamWriter($copy.Open(), $utf8)
+            $w.Write('<?xml version="1.0" encoding="utf-8"?>' + "`r`n" + '<!-- string display moved into the Concord component (M5.5 F4) -->' + "`r`n" + '<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">' + "`r`n" + '</AutoVisualizer>' + "`r`n")
+            $w.Dispose()
+            continue
+        }
         $copy = $target.CreateEntry($entry.FullName, [IO.Compression.CompressionLevel]::Optimal)
         $in = $entry.Open(); $out = $copy.Open()
         try { $in.CopyTo($out) } finally { $in.Dispose(); $out.Dispose() }
