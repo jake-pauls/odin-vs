@@ -62,12 +62,13 @@ public static class OdinModules
                 return null;
             }
 
+            long sizeMegabytes = new FileInfo(path!).Length / (1024 * 1024);
             bool odin = FileContains(path!, m_Extension);
             double ms = (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
             SpikeLog.Write($"odin module check: {instance.FullName} (symbols {path}) -> {(odin ? "Odin" : "not Odin")} in {ms:F1} ms");
             if (ms > SlowScanMilliseconds)
             {
-                SpikeLog.Write($"WARNING: the Odin check of {instance.FullName} took {ms / 1000:F1} s for a {new FileInfo(path!).Length / (1024 * 1024)} MB symbol file; Visual Studio may have paused while the first locals were shown (once per module and session)");
+                SpikeLog.Write($"WARNING: the Odin check of {instance.FullName} took {ms / 1000:F1} s for a {sizeMegabytes} MB symbol file; Visual Studio may have paused while the first locals were shown (once per module and session)");
             }
 
             return odin;

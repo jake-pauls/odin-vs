@@ -197,7 +197,14 @@ public sealed class OdinMapLayoutTests
         }
         finally
         {
-            Directory.Delete(work, recursive: true);
+            try
+            {
+                Directory.Delete(work, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup of our own temp folder (the exe may still be locked); it must not hide the test's own failure.
+            }
         }
     }
 

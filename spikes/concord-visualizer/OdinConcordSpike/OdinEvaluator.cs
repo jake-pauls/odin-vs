@@ -1322,9 +1322,11 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         }
 
         int pending = expressions.Length;
-        void Finish()
+        var finished = new int[expressions.Length];
+        void Finish(int slot)
         {
-            if (Interlocked.Decrement(ref pending) == 0)
+            // A slot counts once, even if its callback ran and a throw from the issuing call is then caught as well.
+            if (Interlocked.Exchange(ref finished[slot], 1) == 0 && Interlocked.Decrement(ref pending) == 0)
             {
                 done(results);
             }
@@ -1340,13 +1342,13 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 inspectionContext.EvaluateExpression(workList, expression, stackFrame, result =>
                 {
                     results[slot] = result.ErrorCode == 0 ? result.ResultObject as DkmSuccessEvaluationResult : null;
-                    Finish();
+                    Finish(slot);
                 });
             }
             catch (Exception ex)
             {
                 SpikeLog.Write($"could not issue '{expressions[i]}': {ex.Message}");
-                Finish();
+                Finish(slot);
             }
         }
     }
@@ -1526,7 +1528,9 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
                     if (key is null || value is null)
                     {
-                        SpikeLog.Write($"map entry failed: {expressions[firstVariant[i * 2]]} -> {Describe(key)}; {expressions[firstVariant[i * 2 + 1]]} -> {Describe(value)}");
+                        // A zero-sized value has no expression of its own (empty range), so name it only when there is one.
+                        string valueExpression = firstVariant[i * 2 + 1] < firstVariant[i * 2 + 2] ? expressions[firstVariant[i * 2 + 1]] : "(none)";
+                        SpikeLog.Write($"map entry failed: {expressions[firstVariant[i * 2]]} -> {Describe(key)}; {valueExpression} -> {Describe(value)}");
                         items.Add(Pseudo(map.Parent, inspectionContext, $"[slot {map.Slots[firstSlot + i]}]", "?", "<unreadable>"));
                         continue;
                     }
