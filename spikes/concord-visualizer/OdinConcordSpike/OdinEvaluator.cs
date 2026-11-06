@@ -48,7 +48,9 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     // Prefix of the C++ value text of an Odin union with a tag; the prefix is never cut off, the rest may be.
     private static readonly Regex m_Union = new(@"^\{tag=(?<tag>\d+) v\d+=", RegexOptions.Compiled);
 
-    private static readonly Regex m_Number =new(@"^\s*(0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled);
+    private static readonly Regex m_Signed = new(@"^\s*(?<sign>-?)(?<n>0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled);
+
+    private static readonly Regex m_Number = new(@"^\s*(0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled);
 
     // Odin scalar names back to the PDB's C names (the first Odin name of each pair in m_ScalarNames is the display guess).
     private static readonly Dictionary<string, string> m_OdinToC = new()
@@ -93,6 +95,12 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         DkmStackWalkFrame stackFrame,
         DkmCompletionRoutine<DkmGetFrameLocalsAsyncResult> completionRoutine)
     {
+        if (!OdinModules.IsOdinFrame(stackFrame))
+        {
+            inspectionContext.GetFrameLocals(workList, stackFrame, completionRoutine);
+            return;
+        }
+
         inspectionContext.GetFrameLocals(workList, stackFrame, result =>
         {
             if (result.ErrorCode != 0 || result.EnumContext is null)
@@ -113,6 +121,12 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         DkmStackWalkFrame frame,
         DkmCompletionRoutine<DkmGetFrameArgumentsAsyncResult> completionRoutine)
     {
+        if (!OdinModules.IsOdinFrame(frame))
+        {
+            inspectionContext.GetFrameArguments(workList, frame, completionRoutine);
+            return;
+        }
+
         inspectionContext.GetFrameArguments(workList, frame, result =>
         {
             if (result.ErrorCode != 0 || result.Arguments is null)
@@ -134,7 +148,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         DkmCompletionRoutine<DkmEvaluateExpressionAsyncResult> completionRoutine)
     {
         // An attempt we issued ourselves: just hand it to the next evaluator, no rewriting (see EvaluateWithRewrites).
-        if (expression.GetDataItem<RetryMarker>() is not null)
+        if (expression.GetDataItem<RetryMarker>() is not null || !OdinModules.IsOdinFrame(stackFrame))
         {
             inspectionContext.EvaluateExpression(workList, expression, stackFrame, completionRoutine);
             return;
@@ -277,6 +291,12 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         if (result.GetDataItem<MapData>() is MapData map)
         {
             GetMapChildren((DkmSuccessEvaluationResult)result, map, workList, inspectionContext, completionRoutine);
+            return;
+        }
+
+        if (result.GetDataItem<RetypeData>() is null && !OdinModules.IsOdinFrame(result.StackFrame))
+        {
+            result.GetChildren(workList, initialRequestSize, inspectionContext, completionRoutine);
             return;
         }
 
@@ -436,7 +456,16 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                         continue;
                     }
 
-                    headers[results[index]] = [(long)ParseUnsigned(len.Value), dynamic ? (long)ParseUnsigned(cap!.Value) : -1];
+                    // A garbage len such as -1 does not parse as unsigned: skip that one result, keep the rest of the batch
+                    // (an exception here used to drop the union variants of every result in it).
+                    if (!TryParseSigned(len.Value, out long lenValue) || (dynamic && !TryParseSigned(cap!.Value, out _)))
+                    {
+                        SpikeLog.Write($"header of {results[index].FullName} is not a plain number ('{len.Value}'), shown natively");
+                        continue;
+                    }
+
+                    TryParseSigned(dynamic ? cap!.Value : "0", out long capValue);
+                    headers[results[index]] = [lenValue, dynamic ? capValue : -1];
                 }
 
                 done(TransformAll(results, headers, variants));
@@ -889,6 +918,31 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         }
 
         return index * CellSize(size);
+    }
+
+    private static bool TryParseSigned(string? text, out long value)
+    {
+        value = 0;
+        Match match = m_Signed.Match(text ?? string.Empty);
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        string number = match.Groups["n"].Value;
+        bool negative = match.Groups["sign"].Value == "-";
+        ulong parsed;
+        if (number.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            parsed = Convert.ToUInt64(number.Substring(2), 16);
+        }
+        else if (!ulong.TryParse(number, out parsed))
+        {
+            return false;
+        }
+
+        value = negative ? -(long)parsed : (long)parsed;
+        return true;
     }
 
     private static ulong ParseUnsigned(string? text)
