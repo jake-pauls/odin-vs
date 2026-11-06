@@ -167,3 +167,40 @@ Planned guard (proposed, not built): (1) a tier-2-style test, `RequiresToolchain
 - `RequiresToolchain` source check: whitespace- and comment-insensitive assertions on the installed Odin `base/runtime/core.odin` and `dynamic_map_internal.odin` for `Raw_Slice`, `Raw_Dynamic_Array`, `Raw_String`, `Raw_Map` field order, `MAP_CACHE_LINE_LOG2/SIZE`, `Map_Hash`, `Map_Cell_Info`, `Map_Cell`, the capacity-bit expressions, `TOMBSTONE_MASK`, `map_hash_is_valid`, the `map_cell_index_dynamic` stride/padding lines, and the order of the key, value and hash arrays in `map_kvh_data_dynamic`. The message names the file to update when one fails.
 - `RequiresToolchain` layout dump: `tests/samples/DebuggerLayout/layout_dump.odin` is run with `odin run -file`; it builds 12 maps (key/value sizes 1, 3, 4, 5, 8, 12, 16, 24, 63, 64, 65, 80, 100, 130 bytes, 3 to 100 entries, every third key deleted) and prints, from Odin's own `map_kvh_data_dynamic`, `map_cell_index_dynamic`, `map_info` and `map_hash_is_valid`, the data word, the array offsets, per-slot offsets and hashes and the tombstones. The test compares every number with `OdinMapLayout`. Mutation check: changing `values = keys + ElementOffset(...)` to `capacity * keySize` fails both the unit test and the dump test (expected 97, got 96 for 3-byte keys).
 - Result on the installed Odin (dev-2026-10): all pass; the whole Core test project is 104 passing. Run `dotnet test tests/OdinVS.Core.Tests --filter FullyQualifiedName~OdinMapLayoutTests` first on every Odin bump. NOT covered by tests: union tag/variant naming and the matrix `#row_major` type spelling (compiler/PDB output, checked only in Exp), the string display, the Exp end-to-end checklist (item 3 of G6, still manual).
+
+## Phase G: cost, write-up and recommendation (2026-11-05)
+
+### G1 Cost (M0 method: transcript timestamps, gaps under 10 min counted as active)
+| | |
+|---|---|
+| Calendar | about 22.6 h, 2026-11-04 22:38 to 2026-11-05 21:13 (local), first message to the last commit of this branch |
+| Active | about 4 h 43 min |
+| Tokens, main session | 347 assistant turns, about 384k output, 758 uncached input, 1.10M cache-creation, 80.0M cache-read (cache reads are context re-read each turn, not new work) |
+| Not included | subagent runs, and the user's own time in Exp (checklists, screenshots) |
+| Component size | `OdinEvaluator.cs` 1,639 lines, `OdinModules.cs` 98, logging 61 (spike C#, 1,798 lines in all); product side `OdinMapLayout.cs` 54 lines, its tests 263 lines, `layout_dump.odin` fixture; `merge-vsix-test.ps1` 139 lines (goes away at promotion) |
+| Where the time went | Phase C/D re-entrancy (three Exp crashes or hangs), maps (layout decoding), then Phase F and the string fix; a standalone slice/dynamic-array visualizer was the first usable result within the first evening |
+
+### G2 What works, what does not, how it deploys
+- **Works (seen in Exp):** `[]T`, `[dynamic]T`, `map[K]V` (struct keys/values included), `union` active variant, `matrix` rows with storage order, `string` (Locals, slices, maps, struct members), Odin scalar names, Watch `a[i]`, `len(a)`, `cap(a)`; editing values through retyped results; nothing changes for C++ frames or for MSVC C frames (gate). See "Limitations and why" for the rest.
+- **Does not / partly:** `any`, `[^]T` (no length exists), `int` vs `i64`, Autos, unreferenced globals, struct summaries containing strings, matrices above 64 cells; all recorded with causes above.
+- **Deployment:** inside the product VSIX: `OdinConcordSpike.dll` (becomes the product component), its compiled `.vsdconfig`, `<Asset Type="DebuggerEngineExtension">`, a `vsdconfig` content type, a reference to `OdinVS.Core` (no `Private` copy needed, it is already in the VSIX). Loaded in-proc into `devenv` on the first debug event; not loaded without a debug session. `msvsmon`/remote and dump debugging were not tried.
+- **Maintenance risk across VS updates:** (1) compile references (`Microsoft.VisualStudio.Debugger.Engine` 17.14 compiled and ran on 18.11; a major VS bump needs a re-check); (2) the `.vsdconfig` schema and level numbers (stable so far); (3) behavior we depend on without a contract: the chain order and the re-entrancy limit (two deep), C++ value text prefixes, the PDB spelling of Odin types and unions; (4) Odin's runtime layout (maps) is covered by `OdinMapLayoutTests`. Failure mode if (1)-(3) break: the component fails to load or shows native text; debugging itself keeps working.
+- **M6 and 100 projects:** no interaction expected. The component works per debug session and per module (gate cached per `UniqueId`, 1 to 2.5 ms once); it does not touch project loading or builds. Not measured with many modules loaded.
+
+### G4 Benefits list re-scored
+| Benefit (milestones.md "Beyond this prototype") | Status |
+|---|---|
+| Odin-native expressions in Watch (`a[i]`, `len`, `cap`) | Partly delivered by the prototype (those three forms). Slicing `s[1:3]`, `in`, `or_else`, `cast(f32)x`, `x^`, `a.?`, `context.` need an evaluator. |
+| Odin names and formats: scalars, `string`, `[]T`, `map`, `union`, `matrix`, `enum`, `bit_set` | Delivered or native-good, except `int` vs `i64` and `[^]T` (not possible: not in the PDB), `any` (needs a `Type_Info` decoder), `distinct`, `Maybe(T)` of pointers, `Small_Array` and `#soa` (not tried). |
+| Correct semantics for `string`/`cstring`, `rune`, `matrix` | Delivered for `string` and `matrix`; `rune` and `cstring` native-good; `complex`/`quaternion` not tried. |
+| Watch parser aids (completion, hover) | Not tried; needs an evaluator and ols data. |
+| Call-stack names (`pkg.proc`), frame filtering, `defer` display | Not tried; Concord has stack-walk hooks (`IDkmCallStackFilter`, from memory, unverified) but this milestone did not look at them. |
+| Odin-syntax conditions and tracepoints | Needs an evaluator. |
+
+Evaluator estimate (my estimate, not measured): a real Odin expression evaluator is its own milestone. It needs a parser, a type model from the PDB, operators and calls into the debuggee, behind the same gate, with the same re-entrancy limits. Against the 4.7 active hours the whole visualizer cost, I would plan days to weeks, with the main risk being the nesting limit when evaluating compound expressions. The remaining benefits (slicing, `in`, conditions in Odin syntax) are convenience, not must-haves.
+
+### G5 Recommendation (proposal; the user decides)
+1. **Promote what exists as a small real milestone** (G6 remainder): move the component into `src/`, delete `odin.natvis`, one clean Exp checklist pass. It is the reduced milestone the first plan called for, and it already covers the must-have (slices and dynamic arrays) plus maps, unions, matrices and strings. Rough cost: under a day (mostly packaging and the Exp pass).
+2. **Do not build an evaluator now.** Revisit only if you find yourself missing Odin syntax in Watch or conditional breakpoints in daily use; then start from the gate and the Watch fallback that exist.
+3. **Do not build `any`**, and leave `[^]T` alone (no length exists). Reconsider `any` if it shows up in real code often; it is a second layout decoder tied to the Odin version.
+4. Keep the three-layer guard (source check, layout dump, Exp checklist) on every Odin bump; Odin 1.0 is expected soon.

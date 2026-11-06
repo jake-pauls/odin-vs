@@ -51,7 +51,8 @@ Verified in Exp 18.11 with `spikes/concord-visualizer/sample` (Odin dev-2026-10)
 - **Autos:** empty for `.odin` files with and without our extension (no language service to pick the variables on a line).
 - **Long values are cut off:** the C++ value text of a result ends in `...` once it is long (`{data=... len=...}`), so a `len=N` parsed from the text can be missing; evaluate `<name>.len` instead.
 - **Building a sample while Exp is debugging it fails:** `odin build` reports `Error(013): don't have access to write to ...exe` because the debuggee holds the file; use `odin check` to validate source, then rebuild after stopping.
-
+- **A global natvis entry named like a common type changes unrelated types:** the product's `string` entry made a C++ `struct string {char* data; long long len;}` show as `"hello"`. Natvis is not scoped to a language or module, so Odin `string` display lives in the Concord component behind the Odin-module gate (a PDB containing `.odin`), and `odin.natvis` is removed at promotion.
+- **The Odin gate is a PDB search, not a compiler id:** `CompilerId` is all zeros for MSVC and Odin; a module mixing Odin and C counts as Odin. See `spikes/concord-visualizer/FINDINGS.md` Phase F.
 ## Editing files with CRLF line endings from scripts
 Working-copy files are CRLF (autocrlf), so a PowerShell `String.Replace` with a `` `n `` multi-line search string matches nothing and changes nothing silently. Check `$t.Contains($old)` (throw if not) and use the file's own newline. Also: a replace of `Global` + newline in a `.sln` also hit `EndGlobal`; anchor on the whole line.
 
