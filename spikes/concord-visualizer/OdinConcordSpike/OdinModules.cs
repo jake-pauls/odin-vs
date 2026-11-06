@@ -20,10 +20,11 @@ public static class OdinModules
     private static readonly ConcurrentDictionary<Guid, bool> m_Cache = new();
     private static readonly ConcurrentDictionary<Guid, bool> m_LoggedUndecided = new();
 
-    // The scan reads the whole file on the dispatcher thread, once per module: about 0.4 s for 1 GB with a warm cache and a
-    // few seconds cold on this machine (measured on large files; Odin PDBs are ~4 MB). A larger symbol file is declared not
-    // Odin without reading it.
-    private const long MaxSymbolFileBytes = 1L << 30;
+    // The scan runs on the dispatcher thread, once per module, and is never capped (a cap would turn a big Odin PDB into a
+    // silent "not Odin"). It stops at the first match, which in an Odin PDB is about a fifth of the way in; only a big
+    // non-Odin language-C module reads the whole file: about 0.4 s per GB warm, several seconds cold on this machine.
+    // A scan slower than this is logged as a warning with the file size.
+    private const double SlowScanMilliseconds = 1000;
 
     public static bool IsOdinFrame(DkmStackWalkFrame? frame)
     {
@@ -61,10 +62,14 @@ public static class OdinModules
                 return null;
             }
 
-            bool tooLarge = new FileInfo(path!).Length > MaxSymbolFileBytes;
-            bool odin = !tooLarge && FileContains(path!, m_Extension);
+            bool odin = FileContains(path!, m_Extension);
             double ms = (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
-            SpikeLog.Write($"odin module check: {instance.FullName} (symbols {path}) -> {(tooLarge ? "not Odin (symbol file over 1 GB, not scanned)" : odin ? "Odin" : "not Odin")} in {ms:F1} ms");
+            SpikeLog.Write($"odin module check: {instance.FullName} (symbols {path}) -> {(odin ? "Odin" : "not Odin")} in {ms:F1} ms");
+            if (ms > SlowScanMilliseconds)
+            {
+                SpikeLog.Write($"WARNING: the Odin check of {instance.FullName} took {ms / 1000:F1} s for a {new FileInfo(path!).Length / (1024 * 1024)} MB symbol file; Visual Studio may have paused while the first locals were shown (once per module and session)");
+            }
+
             return odin;
         }
         catch (Exception ex)
