@@ -29,9 +29,26 @@ public sealed class OdinMapLayoutTests
     [DataRow(5UL, 100UL, 640UL)]
     [DataRow(2UL, 64UL, 128UL)]
     [DataRow(2UL, 65UL, 256UL)]
+    [DataRow(3UL, 0UL, 192UL)]
+    [DataRow(2UL, 128UL, 256UL)]
+    [DataRow(2UL, 129UL, 384UL)]
+    [DataRow(25UL, 5UL, 133UL)]
     public void ElementOffsetSkipsCellPadding(ulong index, ulong size, ulong expected)
     {
         Assert.AreEqual(expected, OdinMapLayout.ElementOffset(index, size));
+    }
+
+    [TestMethod]
+    [DataRow(0UL, 64UL, 1UL)]
+    [DataRow(1UL, 64UL, 64UL)]
+    [DataRow(63UL, 64UL, 1UL)]
+    [DataRow(64UL, 64UL, 1UL)]
+    [DataRow(65UL, 128UL, 1UL)]
+    [DataRow(128UL, 128UL, 1UL)]
+    public void CellHoldsWholeElementsInCacheLineMultiples(ulong size, ulong expectedCell, ulong expectedPerCell)
+    {
+        Assert.AreEqual(expectedCell, OdinMapLayout.CellSize(size));
+        Assert.AreEqual(expectedPerCell, OdinMapLayout.ElementsPerCell(size));
     }
 
     [TestMethod]
@@ -109,6 +126,7 @@ public sealed class OdinMapLayoutTests
             OdinMapLayout.MapArrays arrays = OdinMapLayout.Arrays(dump.Data, dump.KeySize, dump.ValueSize);
 
             Assert.AreEqual(dump.Capacity, arrays.Capacity, label + ": capacity");
+            Assert.AreEqual(dump.KeysAddress, arrays.Keys, label + ": address of the keys array (the data word without its capacity bits)");
             Assert.AreEqual(dump.Values, arrays.Values - arrays.Keys, label + ": offset of the values array");
             Assert.AreEqual(dump.Hashes, arrays.Hashes - arrays.Keys, label + ": offset of the hashes array");
             Assert.AreEqual(dump.KeyCell, OdinMapLayout.CellSize(dump.KeySize), label + ": key cell size");
@@ -155,7 +173,8 @@ public sealed class OdinMapLayoutTests
     // Comments removed and whitespace collapsed, so the checks do not depend on formatting.
     private static string Normalized(string source)
     {
-        string withoutComments = Regex.Replace(source, @"//[^\r\n]*", string.Empty);
+        string withoutLineComments = Regex.Replace(source, @"//[^\r\n]*", string.Empty);
+        string withoutComments = Regex.Replace(withoutLineComments, @"/\*.*?\*/", string.Empty, RegexOptions.Singleline);
         return Regex.Replace(withoutComments, @"\s+", " ");
     }
 
@@ -208,7 +227,7 @@ public sealed class OdinMapLayoutTests
             {
                 Dictionary<string, ulong> values = KeyValues(parts.Skip(1));
                 current = new MapDump(
-                    values["key"], values["value"], values["data"], values["len"], values["cap"], values["values"], values["hashes"],
+                    values["key"], values["value"], values["data"], values["len"], values["cap"], values["keys_address"], values["values"], values["hashes"],
                     values["key_cell"], values["key_per_cell"], values["value_cell"], values["value_per_cell"]);
                 dumps.Add(current);
             }
@@ -249,6 +268,7 @@ public sealed class OdinMapLayoutTests
         ulong Data,
         ulong Length,
         ulong Capacity,
+        ulong KeysAddress,
         ulong Values,
         ulong Hashes,
         ulong KeyCell,
