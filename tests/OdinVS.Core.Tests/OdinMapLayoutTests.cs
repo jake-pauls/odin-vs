@@ -29,7 +29,7 @@ public sealed class OdinMapLayoutTests
     [DataRow(5UL, 100UL, 640UL)]
     [DataRow(2UL, 64UL, 128UL)]
     [DataRow(2UL, 65UL, 256UL)]
-    [DataRow(3UL, 0UL, 192UL)]
+    [DataRow(3UL, 0UL, 0UL)]
     [DataRow(2UL, 128UL, 256UL)]
     [DataRow(2UL, 129UL, 384UL)]
     [DataRow(25UL, 5UL, 133UL)]
@@ -39,7 +39,7 @@ public sealed class OdinMapLayoutTests
     }
 
     [TestMethod]
-    [DataRow(0UL, 64UL, 1UL)]
+    [DataRow(0UL, 0UL, 1UL)]
     [DataRow(1UL, 64UL, 64UL)]
     [DataRow(63UL, 64UL, 1UL)]
     [DataRow(64UL, 64UL, 1UL)]
@@ -149,6 +149,7 @@ public sealed class OdinMapLayoutTests
         }
 
         Assert.IsTrue(dumps.Any(d => d.DeletedHashes.Count > 0), "the dump program produced no deleted slots, so tombstones were not exercised");
+        Assert.IsTrue(dumps.Any(d => d.ValueSize == 0), "the zero-size value case (map[K]struct{}) is missing");
         Assert.IsTrue(dumps.Any(d => d.KeySize == 12 && d.Capacity == 8), "the 12-byte key, capacity-8 case (array after keys starts at byte 100) is missing");
     }
 
@@ -190,6 +191,18 @@ public sealed class OdinMapLayoutTests
         RequireOdin();
         string source = Path.Combine(RepoPaths.Root, "tests", "samples", "DebuggerLayout", "layout_dump.odin");
         string work = Directory.CreateTempSubdirectory("odinvs-layout").FullName;
+        try
+        {
+            return RunLayoutDumpIn(work, source);
+        }
+        finally
+        {
+            Directory.Delete(work, recursive: true);
+        }
+    }
+
+    private static List<MapDump> RunLayoutDumpIn(string work, string source)
+    {
         ProcessStartInfo start = new(OdinPath)
         {
             RedirectStandardOutput = true,

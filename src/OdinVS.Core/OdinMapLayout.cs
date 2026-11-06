@@ -25,9 +25,16 @@ public static class OdinMapLayout
     // Map_Cell_Info.elements_per_cell: as many T as fit in one cell, or one when T is zero-sized or at least a cell.
     public static ulong ElementsPerCell(ulong typeSize) => typeSize is > 0 and < CacheLineSize ? CacheLineSize / typeSize : 1;
 
-    // Map_Cell_Info.size_of_cell: a cell is rounded up to a multiple of the cache line.
+    // Map_Cell_Info.size_of_cell: a cell is rounded up to a multiple of the cache line. A zero-sized type (the value of a
+    // `map[K]struct{}` set) has a zero-sized cell: its array takes no space and the hashes follow the keys directly (found by
+    // the layout dump test, which compared this with a real set).
     public static ulong CellSize(ulong typeSize)
     {
+        if (typeSize == 0)
+        {
+            return 0;
+        }
+
         return typeSize is > 0 and < CacheLineSize
             ? CacheLineSize
             : Math.Max(CacheLineSize, (typeSize + CacheLineSize - 1) / CacheLineSize * CacheLineSize);

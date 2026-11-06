@@ -31,12 +31,36 @@ dump :: proc($K: typeid, $V: typeid, entries: int) {
 		}
 	}
 
-	raw := (^runtime.Raw_Map)(&m)^
+	report(&m)
+}
+
+// A set-like map: zero-size values (`map[K]struct{}` is the usual Odin set). Odin rejects a zero-size KEY type
+// ("Invalid type of a key for a map, got 'struct {}'"), so only the value side can be zero.
+dump_zero_sized :: proc() {
+	set := make(map[[4]u8]struct{})
+	defer delete(set)
+	for i in 1 ..= 20 {
+		k: [4]u8
+		k[0] = u8(i)
+		set[k] = {}
+	}
+	for i in 1 ..= 20 {
+		if i % 3 == 0 {
+			k: [4]u8
+			k[0] = u8(i)
+			delete_key(&set, k)
+		}
+	}
+	report(&set)
+}
+
+report :: proc(m: ^map[$K]$V) {
+	raw := (^runtime.Raw_Map)(m)^
 	info := runtime.map_info(map[K]V)
 	ks, vs, hs, _, _ := runtime.map_kvh_data_dynamic(raw, info)
 	fmt.printfln(
 		"LAYOUT key=%v value=%v data=%v len=%v cap=%v keys_address=%v values=%v hashes=%v key_cell=%v key_per_cell=%v value_cell=%v value_per_cell=%v",
-		size_of(K), size_of(V), raw.data, len(m), cap(m), uintptr(ks), vs - ks, uintptr(hs) - ks,
+		size_of(K), size_of(V), raw.data, len(m^), cap(m^), uintptr(ks), vs - ks, uintptr(hs) - ks,
 		info.ks.size_of_cell, info.ks.elements_per_cell, info.vs.size_of_cell, info.vs.elements_per_cell,
 	)
 	for i in 0 ..< cap(m) {
@@ -62,6 +86,7 @@ main :: proc() {
 	dump([7]u8, [9]u8, 20)
 	dump([17]u8, [33]u8, 20)
 	dump([128]u8, [129]u8, 9)
+	dump_zero_sized()
 	dump([24]u8, [24]u8, 20)
 	dump([63]u8, [64]u8, 20)
 	dump([64]u8, [65]u8, 20)

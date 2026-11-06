@@ -8,13 +8,22 @@ using Microsoft.VisualStudio.Debugger.CallStack;
 namespace OdinConcordSpike;
 
 // Decides whether a module was compiled from Odin. The evaluator is registered for language C, which MSVC C code and Odin
-// share, and `CompilerId` is empty for both (M5.5 Phase F, FINDINGS.md), so the module's symbol file is searched for the
-// source file extension `.odin`: a PDB lists every source document path as plain bytes. The answer is cached per module.
+// share, and `CompilerId` is empty for both (M5.5 Phase F, FINDINGS.md), so the module's symbol file is searched for a
+// source document path ending in `.odin`: a PDB lists every source path as NUL-terminated bytes (checked on real Odin PDBs:
+// every path appears three times, and Odin's own base/core paths are always there). The terminating NUL is part of the
+// pattern, so `.odinproj`, `.odinfile`, `x.odin\` and the `[file.odin]` spelling inside symbol names do not match.
+// The answer is cached per module once it is definitive; a missing or unreadable symbol file is retried on the next frame.
 // A module that mixes Odin with C objects counts as Odin as a whole.
 public static class OdinModules
 {
-    private static readonly byte[] m_Extension = System.Text.Encoding.ASCII.GetBytes(".odin");
+    private static readonly byte[] m_Extension = [.. System.Text.Encoding.ASCII.GetBytes(".odin"), 0];
     private static readonly ConcurrentDictionary<Guid, bool> m_Cache = new();
+    private static readonly ConcurrentDictionary<Guid, bool> m_LoggedUndecided = new();
+
+    // The scan reads the whole file on the dispatcher thread, once per module: about 0.4 s for 1 GB with a warm cache and a
+    // few seconds cold on this machine (measured on large files; Odin PDBs are ~4 MB). A larger symbol file is declared not
+    // Odin without reading it.
+    private const long MaxSymbolFileBytes = 1L << 30;
 
     public static bool IsOdinFrame(DkmStackWalkFrame? frame)
     {
@@ -24,25 +33,53 @@ public static class OdinModules
             return false;
         }
 
-        return m_Cache.GetOrAdd(instance.UniqueId, _ => Decide(instance));
+        if (m_Cache.TryGetValue(instance.UniqueId, out bool known))
+        {
+            return known;
+        }
+
+        if (Decide(instance) is bool answer)
+        {
+            m_Cache[instance.UniqueId] = answer;
+            return answer;
+        }
+
+        return false;
     }
 
-    private static bool Decide(DkmModuleInstance instance)
+    // Null means undecided (no symbol file yet, or it could not be read): not Odin for now, asked again on the next frame.
+    private static bool? Decide(DkmModuleInstance instance)
     {
         long started = Stopwatch.GetTimestamp();
+        string? path = null;
         try
         {
-            string? path = instance.Module?.GetSymbolFilePath();
-            bool odin = !string.IsNullOrEmpty(path) && File.Exists(path) && FileContains(path!, m_Extension);
+            path = instance.Module?.GetSymbolFilePath();
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                LogUndecided(instance, $"symbols {path ?? "(none)"} not available yet");
+                return null;
+            }
+
+            bool tooLarge = new FileInfo(path!).Length > MaxSymbolFileBytes;
+            bool odin = !tooLarge && FileContains(path!, m_Extension);
             double ms = (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
-            SpikeLog.Write($"odin module check: {instance.FullName} (symbols {path ?? "(none)"}) -> {(odin ? "Odin" : "not Odin")} in {ms:F1} ms");
+            SpikeLog.Write($"odin module check: {instance.FullName} (symbols {path}) -> {(tooLarge ? "not Odin (symbol file over 1 GB, not scanned)" : odin ? "Odin" : "not Odin")} in {ms:F1} ms");
             return odin;
         }
         catch (Exception ex)
         {
-            // Not Odin is the safe answer: the component then leaves the module to the native evaluator.
-            SpikeLog.Write($"odin module check for {instance.FullName} failed, treating as not Odin: {ex.Message}");
-            return false;
+            // Not Odin for now: the component then leaves the module to the native evaluator, and the check is repeated.
+            LogUndecided(instance, $"failed on {path ?? "(none)"}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static void LogUndecided(DkmModuleInstance instance, string reason)
+    {
+        if (m_LoggedUndecided.TryAdd(instance.UniqueId, true))
+        {
+            SpikeLog.Write($"odin module check for {instance.FullName} undecided, treating as not Odin until it can be read: {reason}");
         }
     }
 

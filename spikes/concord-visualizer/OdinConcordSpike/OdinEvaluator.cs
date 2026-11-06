@@ -425,9 +425,9 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             Match matrix = m_Matrix.Match(success.Type);
             if (matrix.Success)
             {
-                int rows = int.Parse(matrix.Groups["r"].Value);
-                int columns = int.Parse(matrix.Groups["c"].Value);
-                if (rows * columns is > 0 and <= MaxMatrixCells)
+                // Odin caps matrix dimensions far below this; a parse failure (or overflow) just leaves the matrix native.
+                if (int.TryParse(matrix.Groups["r"].Value, out int rows) && int.TryParse(matrix.Groups["c"].Value, out int columns)
+                    && rows is > 0 and <= MaxMatrixCells && columns is > 0 and <= MaxMatrixCells && rows * columns <= MaxMatrixCells)
                 {
                     matrices.Add((i, expressions.Count, rows, columns));
                     bool rowMajor = matrix.Groups["rm"].Success;
@@ -444,7 +444,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             }
 
             // A union: the active variant `v<tag>` is evaluated so it can be shown alone (tag 0 is nil, needs no evaluation).
-            Match union = m_Union.Match(success.Value);
+            Match union = m_Union.Match(success.Value ?? string.Empty);
             if (union.Success)
             {
                 if (union.Groups["tag"].Value != "0")
@@ -485,13 +485,23 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             : unions.Count > 0 ? unions[0].Index : matrices.Count > 0 ? matrices[0].Index : stringHeaders[0].Index;
         EvalBatch(inspectionContext, workList, results[frameIndex].StackFrame, expressions.ToArray(), values =>
         {
+            // `done` runs exactly once, after the try: a throw from inside it must not be answered with a second call.
+            DkmEvaluationResult[] transformed;
             try
             {
                 var strings = new Dictionary<DkmEvaluationResult, string>();
                 foreach ((int index, int first) in stringHeaders)
                 {
-                    if (values[first] is not null && values[first + 1] is not null
-                        && ReadStringBody(inspectionContext.RuntimeInstance.Process, ParseUnsigned(values[first]!.Value), (long)ParseUnsigned(values[first + 1]!.Value)) is string text)
+                    // A garbage `data` or `len` (such as -1) skips that one string, never the rest of the batch.
+                    if (values[first] is null || values[first + 1] is null
+                        || !TryParseSigned(values[first]!.Value, out long dataAddress)
+                        || !TryParseSigned(values[first + 1]!.Value, out long stringLength))
+                    {
+                        SpikeLog.Write($"string {results[index].FullName}: .data/.len did not evaluate to plain numbers, shown natively");
+                        continue;
+                    }
+
+                    if (ReadStringBody(inspectionContext.RuntimeInstance.Process, (ulong)dataAddress, stringLength) is string text)
                     {
                         strings[results[index]] = text;
                     }
@@ -560,13 +570,23 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                     headers[results[index]] = [lenValue, dynamic ? capValue : -1];
                 }
 
-                done(TransformAll(results, headers, variants, matrixRows, strings));
+                transformed = TransformAll(results, headers, variants, matrixRows, strings);
             }
             catch (Exception ex)
             {
                 SpikeLog.Write($"resolving headers failed: {ex}");
-                done(TransformAll(results));
+                try
+                {
+                    transformed = TransformAll(results);
+                }
+                catch (Exception fallback)
+                {
+                    SpikeLog.Write($"fallback transform failed too, returning the native results: {fallback}");
+                    transformed = results;
+                }
             }
+
+            done(transformed);
         });
     }
 
@@ -627,7 +647,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                     : result;
             }
 
-            Match union = m_Union.Match(success.Value);
+            Match union = m_Union.Match(success.Value ?? string.Empty);
             if (union.Success)
             {
                 return TransformUnion(success, union.Groups["tag"].Value, variants) ?? result;
@@ -1122,7 +1142,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         });
     }
 
-    private static DkmEvaluationResult Pseudo(DkmSuccessEvaluationResult parent, DkmInspectionContext inspectionContext, string name, string member, string value)
+    private static DkmEvaluationResult Pseudo(DkmSuccessEvaluationResult parent, DkmInspectionContext inspectionContext, string name, string member, string value, string type = "int")
     {
         return DkmSuccessEvaluationResult.Create(
             inspectionContext,
@@ -1132,7 +1152,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             DkmEvaluationResultFlags.ReadOnly,
             value,
             null,
-            "int",
+            type,
             DkmEvaluationResultCategory.Data,
             DkmEvaluationResultAccessType.None,
             DkmEvaluationResultStorageType.None,
@@ -1220,7 +1240,10 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         ulong parsed;
         if (number.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
         {
-            parsed = Convert.ToUInt64(number.Substring(2), 16);
+            if (!ulong.TryParse(number.Substring(2), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out parsed))
+            {
+                return false;
+            }
         }
         else if (!ulong.TryParse(number, out parsed))
         {
@@ -1239,8 +1262,11 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             throw new FormatException($"no number in '{text}'");
         }
 
-        string number = match.Value;
-        return number.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToUInt64(number.Substring(2), 16) : ulong.Parse(number);
+        string number = match.Value.Trim();
+        bool parsed = number.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? ulong.TryParse(number.Substring(2), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out ulong hex)
+            : ulong.TryParse(number, out hex);
+        return parsed ? hex : throw new FormatException($"number out of range in '{text}'");
     }
 
     private static DkmEvaluationResult? TransformMap(DkmSuccessEvaluationResult success, string key, string value, Dictionary<DkmEvaluationResult, long[]>? headers)
@@ -1296,18 +1322,32 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         }
 
         int pending = expressions.Length;
+        void Finish()
+        {
+            if (Interlocked.Decrement(ref pending) == 0)
+            {
+                done(results);
+            }
+        }
+
         for (int i = 0; i < expressions.Length; i++)
         {
             int slot = i;
-            DkmLanguageExpression expression = DkmLanguageExpression.Create(inspectionContext.Language, DkmEvaluationFlags.TreatAsExpression, expressions[i], new RetryMarker());
-            inspectionContext.EvaluateExpression(workList, expression, stackFrame, result =>
+            // A throw while issuing must still count the slot as finished (as failed), or `done` would never run.
+            try
             {
-                results[slot] = result.ErrorCode == 0 ? result.ResultObject as DkmSuccessEvaluationResult : null;
-                if (Interlocked.Decrement(ref pending) == 0)
+                DkmLanguageExpression expression = DkmLanguageExpression.Create(inspectionContext.Language, DkmEvaluationFlags.TreatAsExpression, expressions[i], new RetryMarker());
+                inspectionContext.EvaluateExpression(workList, expression, stackFrame, result =>
                 {
-                    done(results);
-                }
-            });
+                    results[slot] = result.ErrorCode == 0 ? result.ResultObject as DkmSuccessEvaluationResult : null;
+                    Finish();
+                });
+            }
+            catch (Exception ex)
+            {
+                SpikeLog.Write($"could not issue '{expressions[i]}': {ex.Message}");
+                Finish();
+            }
         }
     }
 
@@ -1320,9 +1360,20 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     {
         DkmEvaluationResult[] pseudo = [Pseudo(result, inspectionContext, "[len]", "len", map.Length.ToString())];
 
+        // The completion runs once: if it throws inside the try below, the catch must not answer a second time.
+        bool answered = false;
+        void Answer(DkmGetChildrenAsyncResult answer)
+        {
+            if (!answered)
+            {
+                answered = true;
+                completionRoutine(answer);
+            }
+        }
+
         void OnlyPseudo()
         {
-            completionRoutine(new DkmGetChildrenAsyncResult(
+            Answer(new DkmGetChildrenAsyncResult(
                 pseudo,
                 DkmEvaluationResultEnumContext.Create(pseudo.Length, result.StackFrame, inspectionContext, new MapEnum(result, pseudo, [], null))));
         }
@@ -1373,7 +1424,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
                 SpikeLog.Write($"map {result.FullName} : {result.Type}: cap={capacity} used={slots.Count} keySize={keySize} valueSize={valueSize} keys=0x{keys:x} vals=0x{vals:x} hashes=0x{hashes:x}");
                 var layout = new MapLayout(keys, vals, keySize, valueSize, keyC, valueC);
-                completionRoutine(new DkmGetChildrenAsyncResult(
+                Answer(new DkmGetChildrenAsyncResult(
                     pseudo,
                     DkmEvaluationResultEnumContext.Create(pseudo.Length + slots.Count, result.StackFrame, inspectionContext, new MapEnum(result, pseudo, slots, layout))));
             }
@@ -1419,7 +1470,11 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             firstVariant[i * 2] = expressions.Count;
             expressions.AddRange(CastVariants(layout.KeyC, layout.Keys + OdinMapLayout.ElementOffset(slot, layout.KeySize)));
             firstVariant[i * 2 + 1] = expressions.Count;
-            expressions.AddRange(CastVariants(layout.ValueC, layout.Values + OdinMapLayout.ElementOffset(slot, layout.ValueSize)));
+            if (layout.ValueSize > 0)
+            {
+                // A zero-sized value (the set idiom `map[K]struct{}`) has nothing to read and no type to cast to.
+                expressions.AddRange(CastVariants(layout.ValueC, layout.Values + OdinMapLayout.ElementOffset(slot, layout.ValueSize)));
+            }
         }
 
         firstVariant[slotCount * 2] = expressions.Count;
@@ -1444,12 +1499,31 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 }
             }
 
+            bool answered = false;
+            void Answer()
+            {
+                if (!answered)
+                {
+                    answered = true;
+                    completionRoutine(new DkmEvaluationEnumAsyncResult(items.ToArray()));
+                }
+            }
+
             try
             {
                 for (int i = 0; i < slotCount; i++)
                 {
                     DkmSuccessEvaluationResult? key = results[i * 2];
                     DkmSuccessEvaluationResult? value = results[i * 2 + 1];
+                    if (key is not null && layout.ValueSize == 0)
+                    {
+                        string setKey = layout.KeyC == OdinStringType
+                            ? ReadStringHeader(inspectionContext.RuntimeInstance.Process, layout.Keys + OdinMapLayout.ElementOffset(map.Slots[firstSlot + i], layout.KeySize)) ?? key.Value ?? string.Empty
+                            : key.Value ?? string.Empty;
+                        items.Add(Pseudo(map.Parent, inspectionContext, $"[{setKey}]", "?", "{}", "struct{}"));
+                        continue;
+                    }
+
                     if (key is null || value is null)
                     {
                         SpikeLog.Write($"map entry failed: {expressions[firstVariant[i * 2]]} -> {Describe(key)}; {expressions[firstVariant[i * 2 + 1]]} -> {Describe(value)}");
@@ -1488,12 +1562,12 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                         new RetypeData(shown)));
                 }
 
-                completionRoutine(new DkmEvaluationEnumAsyncResult(items.ToArray()));
+                Answer();
             }
             catch (Exception ex)
             {
                 SpikeLog.Write($"map items failed: {ex}");
-                completionRoutine(new DkmEvaluationEnumAsyncResult(items.ToArray()));
+                Answer();
             }
         });
     }
