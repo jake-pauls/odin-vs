@@ -48,7 +48,12 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     // Prefix of the C++ value text of an Odin union with a tag; the prefix is never cut off, the rest may be.
     private static readonly Regex m_Union = new(@"^\{tag=(?<tag>\d+) v\d+=", RegexOptions.Compiled);
 
-    private static readonly Regex m_Signed = new(@"^\s*(?<sign>-?)(?<n>0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled);
+    // `matrix[R, C]T`, or `#row_major matrix[R, C]T`: the PDB type name carries the storage order.
+    private static readonly Regex m_Matrix = new(@"^(?<rm>#row_major )?matrix\[(?<r>\d+), (?<c>\d+)\](?<elem>.+)$", RegexOptions.Compiled);
+
+    private const int MaxMatrixCells = 64;
+
+    private static readonly Regex m_Signed =new(@"^\s*(?<sign>-?)(?<n>0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled);
 
     private static readonly Regex m_Number = new(@"^\s*(0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled);
 
@@ -288,6 +293,12 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             return;
         }
 
+        if (result.GetDataItem<MatrixData>() is MatrixData matrix)
+        {
+            GetMatrixChildren((DkmSuccessEvaluationResult)result, matrix, inspectionContext, completionRoutine);
+            return;
+        }
+
         if (result.GetDataItem<MapData>() is MapData map)
         {
             GetMapChildren((DkmSuccessEvaluationResult)result, map, workList, inspectionContext, completionRoutine);
@@ -356,9 +367,9 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
     public void SetValueAsString(DkmEvaluationResult result, string value, int timeout, out string errorText)
     {
-        if (result.GetDataItem<SequenceData>() is not null || result.GetDataItem<MapData>() is not null)
+        if (result.GetDataItem<SequenceData>() is not null || result.GetDataItem<MapData>() is not null || result.GetDataItem<MatrixData>() is not null)
         {
-            errorText = "Odin slices, dynamic arrays and maps cannot be assigned from the debugger window.";
+            errorText = "Odin slices, dynamic arrays, maps and matrices cannot be assigned from the debugger window.";
             return;
         }
 
@@ -370,7 +381,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
     public string GetUnderlyingString(DkmEvaluationResult result)
     {
-        if (result.GetDataItem<SequenceData>() is not null || result.GetDataItem<MapData>() is not null)
+        if (result.GetDataItem<SequenceData>() is not null || result.GetDataItem<MapData>() is not null || result.GetDataItem<MatrixData>() is not null)
         {
             return string.Empty;
         }
@@ -386,10 +397,33 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         var expressions = new List<string>();
         var wanted = new List<(int Index, bool Dynamic, int First)>();
         var unions = new List<(int Index, int Expression)>();
+        var matrices = new List<(int Index, int First, int Rows, int Columns)>();
         for (int i = 0; i < results.Length; i++)
         {
             if (results[i] is not DkmSuccessEvaluationResult success || success.Type is null)
             {
+                continue;
+            }
+
+            // A matrix: every element is evaluated (`data[c][r]` column-major, `data[r][c]` row-major) so the rows can be shown.
+            Match matrix = m_Matrix.Match(success.Type);
+            if (matrix.Success)
+            {
+                int rows = int.Parse(matrix.Groups["r"].Value);
+                int columns = int.Parse(matrix.Groups["c"].Value);
+                if (rows * columns is > 0 and <= MaxMatrixCells)
+                {
+                    matrices.Add((i, expressions.Count, rows, columns));
+                    bool rowMajor = matrix.Groups["rm"].Success;
+                    for (int r = 0; r < rows; r++)
+                    {
+                        for (int c = 0; c < columns; c++)
+                        {
+                            expressions.Add(rowMajor ? $"{success.FullName}.data[{r}][{c}]" : $"{success.FullName}.data[{c}][{r}]");
+                        }
+                    }
+                }
+
                 continue;
             }
 
@@ -427,11 +461,38 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             return;
         }
 
-        DkmStackWalkFrame frame = results[wanted.Count > 0 ? wanted[0].Index : unions[0].Index].StackFrame;
-        EvalBatch(inspectionContext, workList, frame, expressions.ToArray(), values =>
+        int frameIndex = wanted.Count > 0 ? wanted[0].Index : unions.Count > 0 ? unions[0].Index : matrices[0].Index;
+        EvalBatch(inspectionContext, workList, results[frameIndex].StackFrame, expressions.ToArray(), values =>
         {
             try
             {
+                var matrixRows = new Dictionary<DkmEvaluationResult, string[]>();
+                foreach ((int index, int first, int rows, int columns) in matrices)
+                {
+                    var cells = new string[rows * columns];
+                    bool complete = true;
+                    for (int k = 0; k < cells.Length; k++)
+                    {
+                        DkmSuccessEvaluationResult? cell = values[first + k];
+                        if (cell is null)
+                        {
+                            complete = false;
+                            break;
+                        }
+
+                        cells[k] = TrimFloat((Transform(cell) is DkmSuccessEvaluationResult shown ? shown.Value : cell.Value) ?? string.Empty);
+                    }
+
+                    if (complete)
+                    {
+                        matrixRows[results[index]] = cells;
+                    }
+                    else
+                    {
+                        SpikeLog.Write($"matrix {results[index].FullName}: elements failed to evaluate, shown natively");
+                    }
+                }
+
                 var variants = new Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>();
                 foreach ((int index, int expression) in unions)
                 {
@@ -468,7 +529,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                     headers[results[index]] = [lenValue, dynamic ? capValue : -1];
                 }
 
-                done(TransformAll(results, headers, variants));
+                done(TransformAll(results, headers, variants, matrixRows));
             }
             catch (Exception ex)
             {
@@ -481,13 +542,14 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     private DkmEvaluationResult[] TransformAll(
         DkmEvaluationResult[] results,
         Dictionary<DkmEvaluationResult, long[]>? headers = null,
-        Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>? variants = null)
+        Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>? variants = null,
+        Dictionary<DkmEvaluationResult, string[]>? matrices = null)
     {
         long started = Stopwatch.GetTimestamp();
         var transformed = new DkmEvaluationResult[results.Length];
         for (int i = 0; i < results.Length; i++)
         {
-            transformed[i] = Transform(results[i], headers, variants);
+            transformed[i] = Transform(results[i], headers, variants, matrices);
         }
 
         Interlocked.Add(ref m_PerfOurTicks, Stopwatch.GetTimestamp() - started);
@@ -506,13 +568,22 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     private DkmEvaluationResult Transform(
         DkmEvaluationResult result,
         Dictionary<DkmEvaluationResult, long[]>? headers = null,
-        Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>? variants = null)
+        Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>? variants = null,
+        Dictionary<DkmEvaluationResult, string[]>? matrices = null)
     {
         try
         {
             if (result is not DkmSuccessEvaluationResult success || success.Type is null)
             {
                 return result;
+            }
+
+            Match matrix = m_Matrix.Match(success.Type);
+            if (matrix.Success)
+            {
+                return matrices is not null && matrices.TryGetValue(success, out string[]? cells)
+                    ? TransformMatrix(success, matrix, cells)
+                    : result;
             }
 
             Match union = m_Union.Match(success.Value);
@@ -556,6 +627,99 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             SpikeLog.Write($"transform failed for {result.FullName}: {ex}");
             return result;
         }
+    }
+
+    private static string TrimFloat(string text)
+    {
+        string trimmed = text.Trim();
+        return Regex.IsMatch(trimmed, @"^-?\d+\.\d+$") ? trimmed.TrimEnd('0').TrimEnd('.') : trimmed;
+    }
+
+    // Shows a matrix the way Odin writes it (`matrix[1, 2, 3; 4, 5, 6]`, one row per `;`) whatever the storage order, and says
+    // which order the data is stored in: Odin's default is column-major, `#row_major` opts out. `cells` are row by row.
+    private static DkmEvaluationResult TransformMatrix(DkmSuccessEvaluationResult success, Match matrix, string[] cells)
+    {
+        int rows = int.Parse(matrix.Groups["r"].Value);
+        int columns = int.Parse(matrix.Groups["c"].Value);
+        bool rowMajor = matrix.Groups["rm"].Success;
+        var rowTexts = new string[rows];
+        for (int r = 0; r < rows; r++)
+        {
+            var row = new string[columns];
+            Array.Copy(cells, r * columns, row, 0, columns);
+            rowTexts[r] = string.Join(", ", row);
+        }
+
+        string order = rowMajor ? "row-major" : "column-major";
+        return DkmSuccessEvaluationResult.Create(
+            success.InspectionContext,
+            success.StackFrame,
+            success.Name,
+            success.FullName,
+            DkmEvaluationResultFlags.Expandable | DkmEvaluationResultFlags.ReadOnly,
+            $"matrix[{string.Join("; ", rowTexts)}] ({order})",
+            null,
+            success.Type,
+            success.Category,
+            success.Access,
+            success.StorageType,
+            success.TypeModifierFlags,
+            success.Address,
+            null,
+            null,
+            new MatrixData(rowTexts, columns, matrix.Groups["elem"].Value, order));
+    }
+
+    private void GetMatrixChildren(
+        DkmSuccessEvaluationResult result,
+        MatrixData matrix,
+        DkmInspectionContext inspectionContext,
+        DkmCompletionRoutine<DkmGetChildrenAsyncResult> completionRoutine)
+    {
+        var rows = new List<DkmEvaluationResult>();
+        for (int r = 0; r < matrix.Rows.Count; r++)
+        {
+            rows.Add(DkmSuccessEvaluationResult.Create(
+                inspectionContext,
+                result.StackFrame,
+                $"[{r}]",
+                null,
+                DkmEvaluationResultFlags.ReadOnly,
+                $"{{{matrix.Rows[r]}}}",
+                null,
+                $"[{matrix.Columns}]{matrix.ElementType}",
+                DkmEvaluationResultCategory.Data,
+                DkmEvaluationResultAccessType.None,
+                DkmEvaluationResultStorageType.None,
+                DkmEvaluationResultTypeModifierFlags.None,
+                null,
+                null,
+                null,
+                null));
+        }
+
+        rows.Add(DkmSuccessEvaluationResult.Create(
+            inspectionContext,
+            result.StackFrame,
+            "[storage]",
+            null,
+            DkmEvaluationResultFlags.ReadOnly,
+            matrix.Order,
+            null,
+            "string",
+            DkmEvaluationResultCategory.Data,
+            DkmEvaluationResultAccessType.None,
+            DkmEvaluationResultStorageType.None,
+            DkmEvaluationResultTypeModifierFlags.None,
+            null,
+            null,
+            null,
+            null));
+
+        DkmEvaluationResult[] all = rows.ToArray();
+        completionRoutine(new DkmGetChildrenAsyncResult(
+            all,
+            DkmEvaluationResultEnumContext.Create(all.Length, result.StackFrame, inspectionContext, new SequenceEnum(rows, null, r => r))));
     }
 
     // Odin unions reach us as structs `{tag=N v1=... v2=...}` (tag 0 = nil, variant k is member `v<k>`; no tag for a
@@ -1221,6 +1385,18 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         public long? Capacity { get; } = capacity;
 
         public bool IsDynamic { get; } = isDynamic;
+    }
+
+    // Marks a matrix result; `rows` are the row texts as shown (`1, 2, 3`), whatever the storage order.
+    private sealed class MatrixData(IReadOnlyList<string> rows, int columns, string elementType, string order) : DkmDataItem
+    {
+        public IReadOnlyList<string> Rows { get; } = rows;
+
+        public int Columns { get; } = columns;
+
+        public string ElementType { get; } = elementType;
+
+        public string Order { get; } = order;
     }
 
     // Marks a map result; GetChildren decodes the runtime layout.

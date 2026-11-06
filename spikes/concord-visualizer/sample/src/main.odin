@@ -131,6 +131,10 @@ main :: proc() {
 	multi: [^]int = raw_data(ints)
 	fixed := [4]int{5, 6, 7, 8}
 	mat := matrix[2, 2]f32{1, 2, 3, 4}
+	// Non-square (2 rows, 3 columns) in both storage orders, to tell rows from columns in the display; literals list rows.
+	cmat := matrix[2, 3]f32{1, 2, 3, 4, 5, 6}
+	rmat := #row_major matrix[2, 3]f32{1, 2, 3, 4, 5, 6}
+	cmat3 := matrix[3, 3]f32{1, 2, 3, 4, 5, 6, 7, 8, 9}
 	anything_text: any = "any text"
 	anything_struct: any = one.id
 	// Unions: Maybe(int) is a tagged single-variant union; Maybe(^int) uses the nil-pointer niche (no tag).
