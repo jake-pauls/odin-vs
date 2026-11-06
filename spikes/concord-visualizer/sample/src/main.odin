@@ -1,6 +1,7 @@
 #+feature dynamic-literals
 package main
 
+import "base:runtime"
 import "core:fmt"
 
 // M5.5 type-coverage target. Set a breakpoint on the `fmt.println("done")` line at the end of main
@@ -122,17 +123,39 @@ main :: proc() {
 	color := Color.Green
 	flags := Flags{.Read, .Exec}
 	shape: Shape = Rect{3, 4}
+	shape_circle: Shape = Circle{2}
+	shape_nil: Shape
 	anything: any = 42
 	number := 7
 	ptr := &number
 	multi: [^]int = raw_data(ints)
 	fixed := [4]int{5, 6, 7, 8}
 	mat := matrix[2, 2]f32{1, 2, 3, 4}
+	anything_text: any = "any text"
+	anything_struct: any = one.id
+	// Unions: Maybe(int) is a tagged single-variant union; Maybe(^int) uses the nil-pointer niche (no tag).
+	maybe_int: Maybe(int) = 5
+	maybe_none: Maybe(int)
+	maybe_ptr: Maybe(^int) = ptr
+	color_array := [3]Color{.Red, .Green, .Blue}
+	flags_empty: Flags
 	text := "hello"
 	cstr: cstring = "c string"
 	letter := 'q'
 	ratio := f32(0.5)
 	ok := true
+
+	// --- C4 edge cases (not printed: the garbage slices must never be touched by the program) ---
+	// 1M elements: stepping and expansion performance.
+	million: [dynamic]int
+	reserve(&million, 1_000_000)
+	for i in 0 ..< 1_000_000 {
+		append(&million, i)
+	}
+	// A slice whose len runs past mapped memory (50M, within our sanity limit) and one far past it (5G, rejected).
+	garbage_len := transmute([]int)runtime.Raw_Slice{data = raw_data(ints), len = 50_000_000}
+	garbage_huge := transmute([]int)runtime.Raw_Slice{data = raw_data(ints), len = 5_000_000_000}
+	garbage_neg := transmute([]int)runtime.Raw_Slice{data = raw_data(ints), len = -1}
 
 	fmt.println("done", g_const_count, g_count, g_name, g_ints, g_dyn, g_map, g_things,ints, strs, empty_slice, nil_slice, dyn_ints, dyn_strs, dyn_empty, len(big), one, sub, scores, names, triple_keys, pair_keys, thing_values, many, color, flags, shape, anything, ptr, multi, fixed, mat, text, cstr, letter, ratio, ok)
 
@@ -147,4 +170,5 @@ main :: proc() {
 	delete(pair_keys)
 	delete(thing_values)
 	delete(many)
+	delete(million)
 }

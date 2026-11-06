@@ -45,7 +45,10 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         ["char *"] = "cstring",
     };
 
-    private static readonly Regex m_Number = new(@"^\s*(0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled);
+    // Prefix of the C++ value text of an Odin union with a tag; the prefix is never cut off, the rest may be.
+    private static readonly Regex m_Union = new(@"^\{tag=(?<tag>\d+) v\d+=", RegexOptions.Compiled);
+
+    private static readonly Regex m_Number =new(@"^\s*(0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled);
 
     // Odin scalar names back to the PDB's C names (the first Odin name of each pair in m_ScalarNames is the display guess).
     private static readonly Dictionary<string, string> m_OdinToC = new()
@@ -362,10 +365,24 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     {
         var expressions = new List<string>();
         var wanted = new List<(int Index, bool Dynamic, int First)>();
+        var unions = new List<(int Index, int Expression)>();
         for (int i = 0; i < results.Length; i++)
         {
             if (results[i] is not DkmSuccessEvaluationResult success || success.Type is null)
             {
+                continue;
+            }
+
+            // A union: the active variant `v<tag>` is evaluated so it can be shown alone (tag 0 is nil, needs no evaluation).
+            Match union = m_Union.Match(success.Value);
+            if (union.Success)
+            {
+                if (union.Groups["tag"].Value != "0")
+                {
+                    unions.Add((i, expressions.Count));
+                    expressions.Add($"{success.FullName}.v{union.Groups["tag"].Value}");
+                }
+
                 continue;
             }
 
@@ -384,16 +401,30 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             }
         }
 
-        if (wanted.Count == 0)
+        if (expressions.Count == 0)
         {
             done(TransformAll(results));
             return;
         }
 
-        EvalBatch(inspectionContext, workList, results[wanted[0].Index].StackFrame, expressions.ToArray(), values =>
+        DkmStackWalkFrame frame = results[wanted.Count > 0 ? wanted[0].Index : unions[0].Index].StackFrame;
+        EvalBatch(inspectionContext, workList, frame, expressions.ToArray(), values =>
         {
             try
             {
+                var variants = new Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>();
+                foreach ((int index, int expression) in unions)
+                {
+                    if (values[expression] is DkmSuccessEvaluationResult variant)
+                    {
+                        variants[results[index]] = variant;
+                    }
+                    else
+                    {
+                        SpikeLog.Write($"union variant of {results[index].FullName} failed to evaluate");
+                    }
+                }
+
                 var headers = new Dictionary<DkmEvaluationResult, long[]>();
                 foreach ((int index, bool dynamic, int first) in wanted)
                 {
@@ -408,7 +439,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                     headers[results[index]] = [(long)ParseUnsigned(len.Value), dynamic ? (long)ParseUnsigned(cap!.Value) : -1];
                 }
 
-                done(TransformAll(results, headers));
+                done(TransformAll(results, headers, variants));
             }
             catch (Exception ex)
             {
@@ -418,13 +449,16 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         });
     }
 
-    private DkmEvaluationResult[] TransformAll(DkmEvaluationResult[] results, Dictionary<DkmEvaluationResult, long[]>? headers = null)
+    private DkmEvaluationResult[] TransformAll(
+        DkmEvaluationResult[] results,
+        Dictionary<DkmEvaluationResult, long[]>? headers = null,
+        Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>? variants = null)
     {
         long started = Stopwatch.GetTimestamp();
         var transformed = new DkmEvaluationResult[results.Length];
         for (int i = 0; i < results.Length; i++)
         {
-            transformed[i] = Transform(results[i], headers);
+            transformed[i] = Transform(results[i], headers, variants);
         }
 
         Interlocked.Add(ref m_PerfOurTicks, Stopwatch.GetTimestamp() - started);
@@ -440,13 +474,22 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         return transformed;
     }
 
-    private DkmEvaluationResult Transform(DkmEvaluationResult result, Dictionary<DkmEvaluationResult, long[]>? headers = null)
+    private DkmEvaluationResult Transform(
+        DkmEvaluationResult result,
+        Dictionary<DkmEvaluationResult, long[]>? headers = null,
+        Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>? variants = null)
     {
         try
         {
             if (result is not DkmSuccessEvaluationResult success || success.Type is null)
             {
                 return result;
+            }
+
+            Match union = m_Union.Match(success.Value);
+            if (union.Success)
+            {
+                return TransformUnion(success, union.Groups["tag"].Value, variants) ?? result;
             }
 
             if (TryParseMapType(success.Type, out string mapKey, out string mapValue))
@@ -484,6 +527,58 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             SpikeLog.Write($"transform failed for {result.FullName}: {ex}");
             return result;
         }
+    }
+
+    // Odin unions reach us as structs `{tag=N v1=... v2=...}` (tag 0 = nil, variant k is member `v<k>`; no tag for a
+    // single-pointer union, which has just `v0` and stays as the C++ evaluator shows it). Shows only the active variant;
+    // children, editing and strings come from the evaluated variant.
+    private DkmEvaluationResult? TransformUnion(DkmSuccessEvaluationResult success, string tag, Dictionary<DkmEvaluationResult, DkmSuccessEvaluationResult>? variants)
+    {
+        if (tag == "0")
+        {
+            return DkmSuccessEvaluationResult.Create(
+                success.InspectionContext,
+                success.StackFrame,
+                success.Name,
+                success.FullName,
+                DkmEvaluationResultFlags.ReadOnly,
+                "nil",
+                null,
+                success.Type,
+                success.Category,
+                success.Access,
+                success.StorageType,
+                success.TypeModifierFlags,
+                success.Address,
+                null,
+                null,
+                new RetypeData(success));
+        }
+
+        if (variants is null || !variants.TryGetValue(success, out DkmSuccessEvaluationResult? variant))
+        {
+            return null;
+        }
+
+        DkmSuccessEvaluationResult shown = Transform(variant) as DkmSuccessEvaluationResult ?? variant;
+        bool expandable = (variant.Flags & DkmEvaluationResultFlags.Expandable) != 0;
+        return DkmSuccessEvaluationResult.Create(
+            success.InspectionContext,
+            success.StackFrame,
+            success.Name,
+            success.FullName,
+            variant.Flags,
+            expandable ? $"{shown.Type} {shown.Value}" : shown.Value,
+            variant.EditableValue,
+            success.Type,
+            success.Category,
+            success.Access,
+            success.StorageType,
+            success.TypeModifierFlags,
+            success.Address,
+            variant.CustomUIVisualizers,
+            variant.ExternalModules,
+            new RetypeData(variant));
     }
 
     private static DkmEvaluationResult? TransformSequence(DkmSuccessEvaluationResult success, bool dynamic, Dictionary<DkmEvaluationResult, long[]>? headers)
