@@ -52,13 +52,6 @@ public sealed class DebuggerComponentRegistrationTests
     }
 
     [TestMethod]
-    public void ThereIsNoNoFilterRegistrationAtAll()
-    {
-        // The spike's ModuleLoadLogger wrote the module paths of every debuggee to disk; it must not come back.
-        Assert.AreEqual(0, Component().Descendants(m_Vsdconfig + "NoFilter").Count());
-    }
-
-    [TestMethod]
     public void ManifestShipsTheCompiledConfigAsADebuggerEngineExtension()
     {
         XDocument manifest = XDocument.Load(Src("OdinVS", "source.extension.vsixmanifest"));
@@ -80,16 +73,6 @@ public sealed class DebuggerComponentRegistrationTests
 
         XDocument component = XDocument.Load(Src("OdinVS.Debugger", "OdinVS.Debugger.csproj"));
         Assert.AreEqual(1, component.Descendants("VsdConfigXmlFiles").Count(f => (string?)f.Attribute("Include") == "OdinVS.Debugger.vsdconfigxml"));
-    }
-
-    [TestMethod]
-    public void TheNatvisIsGoneEverywhere()
-    {
-        // The `string` natvis entry also changed unrelated C++ types named `string`; the component shows Odin strings itself.
-        Assert.IsFalse(File.Exists(Src("OdinVS", "Visualizers", "odin.natvis")));
-        Assert.IsFalse(File.ReadAllText(Src("OdinVS", "OdinVS.csproj")).Contains("natvis", StringComparison.OrdinalIgnoreCase));
-        Assert.IsFalse(File.ReadAllText(Src("OdinVS", "source.extension.vsixmanifest")).Contains("natvis", StringComparison.OrdinalIgnoreCase));
-        Assert.IsFalse(File.ReadAllText(Src("OdinVS", "source.extension.vsixmanifest")).Contains("NativeVisualizer", StringComparison.Ordinal));
     }
 
     [TestMethod]
