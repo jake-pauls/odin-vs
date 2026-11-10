@@ -4,3 +4,5 @@ obj/
 *.vsix
 .claude/settings.local.json
 nuget/*.nupkg
+UpgradeLog*.htm
+_UpgradeReport_Files/
