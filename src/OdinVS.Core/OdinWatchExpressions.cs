@@ -116,7 +116,10 @@ public static class OdinWatchExpressions
 
             if (c != '\\')
             {
-                result.AddRange(Encoding.UTF8.GetBytes(c.ToString()));
+                // A character outside the Basic Multilingual Plane is two UTF-16 chars and must be encoded together.
+                int length = char.IsHighSurrogate(c) && i + 1 < trimmed.Length - 1 && char.IsLowSurrogate(trimmed[i + 1]) ? 2 : 1;
+                result.AddRange(Encoding.UTF8.GetBytes(trimmed.Substring(i, length)));
+                i += length - 1;
                 continue;
             }
 
@@ -179,13 +182,32 @@ public static class OdinWatchExpressions
         return text.All(c => char.IsLetterOrDigit(c) || c is '_' or '.' or ':');
     }
 
-    // Index of the `]` that closes the `[` at `open`, or -1.
+    // Index of the `]` that closes the `[` at `open`, or -1. Brackets inside a string literal do not count.
     private static int MatchingClose(string text, int open)
     {
         int depth = 0;
+        bool inString = false;
         for (int i = open; i < text.Length; i++)
         {
-            if (text[i] == '[')
+            if (inString)
+            {
+                if (text[i] == '\\')
+                {
+                    i++;
+                }
+                else if (text[i] == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (text[i] == '"')
+            {
+                inString = true;
+            }
+            else if (text[i] == '[')
             {
                 depth++;
             }

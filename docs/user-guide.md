@@ -140,7 +140,7 @@ Press F5 (or Ctrl+F5) on an Odin project; a Debug build carries `-debug`, so bre
 | `int`, `u8`, `f32`, `rune`, `cstring`, ... | Odin names for the scalar types (the debug symbols cannot tell `int` from `i64`, so `int` is a best guess) |
 | `enum`, `bit_set`, `[N]T` | already readable without the component |
 
-Not covered: `any`, `Small_Array`, `#soa` arrays and `Maybe`. Pointers `[^]T` display as plain pointers.
+Not covered: `any`, `Small_Array`, `#soa` arrays and `Maybe` of a pointer (it has no tag, so it shows as the native `{v0=...}`). Pointers `[^]T` display as plain pointers.
 
 **Expressions you can type in Watch** (checked in the Visual Studio Experimental instance on 2026-11-09)
 

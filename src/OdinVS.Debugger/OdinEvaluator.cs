@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.VisualStudio.Debugger;
@@ -19,7 +20,9 @@ namespace OdinVS.Debugger;
 //     (`<name>.data,<len>`), so element display and nested expansion keep working.
 //  D1: C scalar type names are shown with their Odin names (`__int64` -> `int`, `__int64 *` -> `^int`). The PDB cannot
 //     tell `int` from `i64`, so this is a best guess (see FINDINGS.md). Retyped results forward everything else to the original.
-//  D2: Watch expressions the C evaluator rejects are retried as Odin: `len(x)` -> `x.len`, `a[i]` -> `a.data[i]`.
+//  D2: Watch expressions the C evaluator rejects are retried as Odin: `len(x)` -> `x.len`, `a[i]` -> `a.data[i]`; the index is
+//     checked against `len` (an out-of-range index is an error), a fixed array is range-checked from its type name, and
+//     `m[key]` on a `map[K]V` is looked up in the debuggee's memory (LookupMapEntry).
 // Anything we cannot parse or read is returned unchanged. Public because the dispatcher instantiates it by name.
 public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 {
@@ -205,7 +208,6 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             $"{shape.Base}.data",
             $"sizeof({shape.Base}.data->key)",
             $"sizeof({shape.Base}.data->value)",
-            shape.Index,
             $"(__int64)({shape.Index})",
             $"(unsigned __int64)&({shape.Index})",
         ];
@@ -432,7 +434,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     }
 
     // What EvaluateWithRewrites learns about `Base[Index]` next to evaluating it: the evaluations of the map base, its `data`
-    // member, the key and value sizes (as GetMapChildren reads them), and the index as written, as a number and as an address
+    // member, the key and value sizes (as GetMapChildren reads them), and the index as a number and as an address
     // (a result of this kind of evaluation carries no Address of its own). Null where one failed.
     private sealed class MapProbe(OdinWatchExpressions.MapLookupShape shape, DkmSuccessEvaluationResult?[] values)
     {
@@ -444,9 +446,8 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         public const int DataValue = 1;
         public const int KeySizeValue = 2;
         public const int ValueSizeValue = 3;
-        public const int IndexValue = 4;
-        public const int IndexNumber = 5;
-        public const int IndexAddress = 6;
+        public const int IndexNumber = 4;
+        public const int IndexAddress = 5;
     }
 
     // Longest string key or map storage that is searched; beyond it the lookup says so instead of reading it.
@@ -527,7 +528,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 return;
             }
 
-            System.Diagnostics.Stopwatch timer = System.Diagnostics.Stopwatch.StartNew();
+            Stopwatch timer = Stopwatch.StartNew();
             ulong? slot = FindSlot(process, arrays, keySize, isString, target, out int used, out int comparisons, out string? scanProblem);
             DebuggerLog.Write($"map lookup '{original.Text}': {used} used slots, {comparisons} string reads, {(slot is null ? "not found" : $"slot {slot}")}, {timer.ElapsedMilliseconds} ms");
             if (slot is null)
@@ -771,11 +772,6 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             }
         }
 
-        if (found is not null)
-        {
-            problem = null;
-        }
-
         return found;
     }
 
@@ -807,6 +803,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
         return count;
     }
+
     public void GetChildren(
         DkmEvaluationResult result,
         DkmWorkList workList,
@@ -1252,7 +1249,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 process.ReadMemory(data, DkmReadMemoryFlags.None, bytes);
             }
 
-            System.Text.StringBuilder text = new("\"");
+            StringBuilder text = new("\"");
             foreach (char c in System.Text.Encoding.UTF8.GetString(bytes))
             {
                 switch (c)

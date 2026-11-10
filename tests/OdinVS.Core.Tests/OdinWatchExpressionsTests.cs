@@ -99,10 +99,69 @@ public sealed class OdinWatchExpressionsTests
     }
 
     [TestMethod]
+    public void NonBmpCharactersInAStringLiteralAreEncodedWhole()
+    {
+        Assert.IsTrue(OdinWatchExpressions.TryParseStringLiteral("\"a😀\"", out byte[] bytes));
+        CollectionAssert.AreEqual("a😀"u8.ToArray(), bytes);
+    }
+
+    [TestMethod]
+    public void FindBracketsStopsAtTheMaximum()
+    {
+        CollectionAssert.AreEqual(new[] { 1, 4 }, OdinWatchExpressions.FindBrackets("a[1][2][3]", 2).ToArray());
+        CollectionAssert.AreEqual(new[] { 1, 4, 7 }, OdinWatchExpressions.FindBrackets("a[1][2][3]", 9).ToArray());
+        Assert.IsEmpty(OdinWatchExpressions.FindBrackets("plain", 4));
+    }
+
+    [TestMethod]
+    public void EmptyMaskLeavesTheTextAndHasNoChecks()
+    {
+        OdinWatchExpressions.IndexRewrite rewrite = OdinWatchExpressions.Rewrite("a[1]", OdinWatchExpressions.FindBrackets("a[1]", 4), 0);
+        Assert.AreEqual("a[1]", rewrite.Text);
+        Assert.IsEmpty(rewrite.Checks);
+    }
+
+    [TestMethod]
+    public void SplitLookupTakesTheFirstBracketPairAndKeepsTheRest()
+    {
+        OdinWatchExpressions.MapLookupShape? shape = OdinWatchExpressions.SplitLookup("a[1][2]");
+        Assert.IsNotNull(shape);
+        Assert.AreEqual("1", shape.Index);
+        Assert.AreEqual("[2]", shape.Rest);
+
+        shape = OdinWatchExpressions.SplitLookup("a[b[1]]");
+        Assert.IsNotNull(shape);
+        Assert.AreEqual("b[1]", shape.Index);
+        Assert.AreEqual(string.Empty, shape.Rest);
+    }
+
+    [TestMethod]
+    public void SplitLookupIgnoresBracketsInsideAStringLiteral()
+    {
+        OdinWatchExpressions.MapLookupShape? shape = OdinWatchExpressions.SplitLookup("m[\"a]b\"]");
+        Assert.IsNotNull(shape);
+        Assert.AreEqual("\"a]b\"", shape.Index);
+        Assert.AreEqual(string.Empty, shape.Rest);
+
+        shape = OdinWatchExpressions.SplitLookup("m[\"q\\\"]\"].x");
+        Assert.IsNotNull(shape);
+        Assert.AreEqual("\"q\\\"]\"", shape.Index);
+        Assert.AreEqual(".x", shape.Rest);
+    }
+
+    [TestMethod]
+    public void SplitLookupAcceptsQualifiedNames()
+    {
+        Assert.AreEqual("pkg::g", OdinWatchExpressions.SplitLookup("pkg::g[1]")!.Base);
+        Assert.IsNull(OdinWatchExpressions.SplitLookup("a->b[1]"), "arrow members are not a plain member chain (not supported yet)");
+    }
+
+    [TestMethod]
     public void LittleEndianKeepsTheLowBytes()
     {
         CollectionAssert.AreEqual(new byte[] { 5, 0, 0, 0 }, OdinWatchExpressions.LittleEndian(5, 4));
         CollectionAssert.AreEqual(new byte[] { 0xFF, 0xFF }, OdinWatchExpressions.LittleEndian(-1, 2));
         CollectionAssert.AreEqual(new byte[] { 1, 2, 0, 0, 0, 0, 0, 0 }, OdinWatchExpressions.LittleEndian(0x0201, 8));
+        CollectionAssert.AreEqual(new byte[] { 44 }, OdinWatchExpressions.LittleEndian(300, 1), "no range check here: callers must reject a value that does not fit the key");
     }
 }
