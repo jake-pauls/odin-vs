@@ -62,7 +62,8 @@ public static class OdinWatchExpressions
 
             string baseText = result.Substring(BaseStart(result, at), at - BaseStart(result, at)).Trim();
             string indexText = result.Substring(open + 1, close - open - 1).Trim();
-            if (baseText.Length > 0 && indexText.Length > 0)
+            // An index with side effects (`i++`, a call) would be evaluated again by the check, so it is not checked.
+            if (baseText.Length > 0 && indexText.Length > 0 && !HasSideEffects(indexText))
             {
                 checks.Add(new IndexCheck(baseText, indexText));
             }
@@ -170,6 +171,105 @@ public static class OdinWatchExpressions
         }
 
         return bytes;
+    }
+
+    // `[4]int` (Odin's spelling) or `int[4]` (the C spelling): the length of the first dimension, or null for any other type.
+    public static long? FixedArrayLength(string type)
+    {
+        string trimmed = type.Trim();
+        if (trimmed.StartsWith("[", StringComparison.Ordinal))
+        {
+            int close = trimmed.IndexOf(']');
+            return close > 1 && long.TryParse(trimmed.Substring(1, close - 1), out long odinLength) ? odinLength : null;
+        }
+
+        int open = trimmed.LastIndexOf('[');
+        if (open <= 0 || !trimmed.EndsWith("]", StringComparison.Ordinal) || trimmed.IndexOf('[') != open)
+        {
+            return null;
+        }
+
+        return long.TryParse(trimmed.Substring(open + 1, trimmed.Length - open - 2), out long cLength) ? cLength : null;
+    }
+
+    // The order in which the subsets of `count` brackets are tried (bit b selects bracket b, none excluded): fewest rewrites
+    // first, then by value, so the smallest rewrite that evaluates wins.
+    public static IReadOnlyList<int> SubsetOrder(int count)
+    {
+        List<int> masks = [];
+        for (int mask = 1; mask < (1 << count); mask++)
+        {
+            masks.Add(mask);
+        }
+
+        masks.Sort((x, y) =>
+        {
+            int byCount = BitCount(x).CompareTo(BitCount(y));
+            return byCount != 0 ? byCount : x.CompareTo(y);
+        });
+        return masks;
+    }
+
+    // The stored bytes of an integer map key of `size` bytes, or null when `value` is outside what that type can hold
+    // (`m[300]` on a `map[u8]V` is not key 44). Eight-byte keys take any value: an unsigned one arrives as a negative `long`.
+    public static byte[]? TryIntegerKey(long value, int size, bool isSigned)
+    {
+        if (size is < 1 or > 8)
+        {
+            return null;
+        }
+
+        if (size < 8)
+        {
+            long bound = 1L << (8 * size - (isSigned ? 1 : 0));
+            long minimum = isSigned ? -bound : 0;
+            if (value < minimum || value > bound - 1)
+            {
+                return null;
+            }
+        }
+
+        return LittleEndian(value, size);
+    }
+
+    // True when evaluating the text more than once could change something: an assignment, `++`/`--`, or a call.
+    public static bool HasSideEffects(string text)
+    {
+        if (text.Contains("++") || text.Contains("--"))
+        {
+            return true;
+        }
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (c == '(' && i > 0 && (char.IsLetterOrDigit(text[i - 1]) || text[i - 1] is '_' or ']' or ')'))
+            {
+                return true;
+            }
+
+            if (c == '=')
+            {
+                bool comparison = (i > 0 && text[i - 1] is '=' or '<' or '>' or '!') || (i + 1 < text.Length && text[i + 1] == '=');
+                if (!comparison)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static int BitCount(int value)
+    {
+        int count = 0;
+        for (; value != 0; value &= value - 1)
+        {
+            count++;
+        }
+
+        return count;
     }
 
     private static bool IsMemberChain(string text)

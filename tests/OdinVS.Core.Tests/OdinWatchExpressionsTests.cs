@@ -157,6 +157,79 @@ public sealed class OdinWatchExpressionsTests
     }
 
     [TestMethod]
+    [DataRow("[4]int", 4L)]
+    [DataRow("int[4]", 4L)]
+    [DataRow("[2][3]int", 2L)]
+    [DataRow("[]int", null)]
+    [DataRow("[dynamic]int", null)]
+    [DataRow("int[2][3]", null)]
+    [DataRow("map[int]int", null)]
+    [DataRow("matrix[2, 2]f32", null)]
+    [DataRow("string", null)]
+    public void FixedArrayLengthReadsBothSpellings(string type, long? expected)
+    {
+        Assert.AreEqual(expected, OdinWatchExpressions.FixedArrayLength(type));
+    }
+
+    [TestMethod]
+    public void SubsetOrderIsFewestBracketsFirst()
+    {
+        CollectionAssert.AreEqual(new[] { 1, 2, 4, 3, 5, 6, 7 }, OdinWatchExpressions.SubsetOrder(3).ToArray());
+        Assert.IsEmpty(OdinWatchExpressions.SubsetOrder(0));
+        Assert.HasCount(15, OdinWatchExpressions.SubsetOrder(4));
+    }
+
+    [TestMethod]
+    [DataRow(255L, 1, false, true)]
+    [DataRow(256L, 1, false, false)]
+    [DataRow(-1L, 1, false, false)]
+    [DataRow(-128L, 1, true, true)]
+    [DataRow(-129L, 1, true, false)]
+    [DataRow(128L, 1, true, false)]
+    [DataRow(300L, 1, false, false)]
+    [DataRow(2147483647L, 4, true, true)]
+    [DataRow(2147483648L, 4, true, false)]
+    [DataRow(4294967295L, 4, false, true)]
+    [DataRow(-1L, 8, false, true)]
+    [DataRow(-1L, 8, true, true)]
+    public void IntegerKeysMustFitTheirType(long value, int size, bool isSigned, bool fits)
+    {
+        byte[]? bytes = OdinWatchExpressions.TryIntegerKey(value, size, isSigned);
+        Assert.AreEqual(fits, bytes is not null);
+        if (bytes is not null)
+        {
+            CollectionAssert.AreEqual(OdinWatchExpressions.LittleEndian(value, size), bytes);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("i", false)]
+    [DataRow("i + 1", false)]
+    [DataRow("(i + 1) * 2", false)]
+    [DataRow("a == b", false)]
+    [DataRow("a <= b", false)]
+    [DataRow("a != b", false)]
+    [DataRow("i++", true)]
+    [DataRow("--i", true)]
+    [DataRow("i = 3", true)]
+    [DataRow("f(x)", true)]
+    [DataRow("ptr.fn(1)", true)]
+    [DataRow("a[i](x)", true)]
+    [DataRow("i += 1", true)]
+    public void SideEffectsAreRecognised(string text, bool expected)
+    {
+        Assert.AreEqual(expected, OdinWatchExpressions.HasSideEffects(text));
+    }
+
+    [TestMethod]
+    public void IndexWithSideEffectsGetsNoBoundsCheck()
+    {
+        OdinWatchExpressions.IndexRewrite rewrite = OdinWatchExpressions.Rewrite("a[i++]", OdinWatchExpressions.FindBrackets("a[i++]", 4), 1);
+        Assert.AreEqual("a.data[i++]", rewrite.Text);
+        Assert.IsEmpty(rewrite.Checks);
+    }
+
+    [TestMethod]
     public void LittleEndianKeepsTheLowBytes()
     {
         CollectionAssert.AreEqual(new byte[] { 5, 0, 0, 0 }, OdinWatchExpressions.LittleEndian(5, 4));

@@ -33,7 +33,6 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
     private static readonly Regex m_SliceType = new(@"^\[\](?<elem>.+)$", RegexOptions.Compiled);
     private static readonly Regex m_DynamicType = new(@"^\[dynamic\](?<elem>.+)$", RegexOptions.Compiled);
-    private static readonly Regex m_FixedPrefix = new(@"^\[(?<n>\d+)\]", RegexOptions.Compiled);
     private static readonly Regex m_FixedType = new(@"^(?<base>[^\[\]]+)\[(?<n>\d+)\]$", RegexOptions.Compiled);
     private static readonly Regex m_LenCap = new(@"len=(?<len>0x[0-9a-fA-F]+|\d+) cap=(?<cap>0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled | RegexOptions.RightToLeft);
     private static readonly Regex m_Len = new(@"len=(?<len>0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled | RegexOptions.RightToLeft);
@@ -195,7 +194,8 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         DkmCompletionRoutine<DkmEvaluateExpressionAsyncResult> completionRoutine)
     {
         OdinWatchExpressions.MapLookupShape? shape = OdinWatchExpressions.SplitLookup(firstText);
-        if (shape is null)
+        // An index with side effects (`i++`, a call) would be evaluated again by every probe, so such text is not probed.
+        if (shape is null || OdinWatchExpressions.HasSideEffects(shape.Index))
         {
             inspectionContext.EvaluateExpression(workList, first, stackFrame, firstResult =>
                 ContinueAfterFirst(inspectionContext, workList, original, firstText, stackFrame, firstResult, null, completionRoutine));
@@ -234,7 +234,41 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         });
     }
 
+    // Answers exactly once and never lets an exception escape into a Concord completion callback: a throw falls back to the
+    // native result of the typed text, which is what Visual Studio would have shown without the component.
     private void ContinueAfterFirst(
+        DkmInspectionContext inspectionContext,
+        DkmWorkList workList,
+        DkmLanguageExpression original,
+        string firstText,
+        DkmStackWalkFrame stackFrame,
+        DkmEvaluateExpressionAsyncResult firstResult,
+        MapProbe? probe,
+        DkmCompletionRoutine<DkmEvaluateExpressionAsyncResult> completionRoutine)
+    {
+        bool answered = false;
+        void Answer(DkmEvaluateExpressionAsyncResult answer)
+        {
+            if (!answered)
+            {
+                answered = true;
+                completionRoutine(answer);
+            }
+        }
+
+        try
+        {
+            ContinueAfterFirstCore(inspectionContext, workList, original, firstText, stackFrame, firstResult, probe, Answer);
+        }
+        catch (Exception ex)
+        {
+            DebuggerLog.Write($"evaluating '{original.Text}' failed, shown natively: {ex}");
+            CloseProbe(probe);
+            Answer(firstResult);
+        }
+    }
+
+    private void ContinueAfterFirstCore(
         DkmInspectionContext inspectionContext,
         DkmWorkList workList,
         DkmLanguageExpression original,
@@ -275,18 +309,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             return;
         }
 
-        // Subsets in order of size, then value, so the fewest rewrites that work win.
-        List<int> masks = [];
-        for (int mask = 1; mask < (1 << brackets.Count); mask++)
-        {
-            masks.Add(mask);
-        }
-
-        masks.Sort((x, y) =>
-        {
-            int byCount = PopCount(x).CompareTo(PopCount(y));
-            return byCount != 0 ? byCount : x.CompareTo(y);
-        });
+        IReadOnlyList<int> masks = OdinWatchExpressions.SubsetOrder(brackets.Count);
 
         OdinWatchExpressions.IndexRewrite[] rewrites = [.. masks.Select(m => OdinWatchExpressions.Rewrite(firstText, brackets, m))];
         DkmEvaluateExpressionAsyncResult?[] results = new DkmEvaluateExpressionAsyncResult?[masks.Count];
@@ -301,6 +324,19 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 return;
             }
 
+            try
+            {
+                ChooseAttempt();
+            }
+            catch (Exception ex)
+            {
+                DebuggerLog.Write($"choosing the rewrite of '{original.Text}' failed, shown natively: {ex}");
+                completionRoutine(firstResult);
+            }
+        }
+
+        void ChooseAttempt()
+        {
             int chosen = -1;
             for (int i = 0; i < results.Length && chosen < 0; i++)
             {
@@ -404,15 +440,10 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             return null;
         }
 
-        Match odinStyle = m_FixedPrefix.Match(type);
-        Match cStyle = m_FixedType.Match(type);
-        string? length = odinStyle.Success ? odinStyle.Groups["n"].Value : cStyle.Success ? cStyle.Groups["n"].Value : null;
-        if (length is null || !long.TryParse(length, out long count) || (index >= 0 && index < count))
-        {
-            return null;
-        }
-
-        return $"index {index} is out of bounds of {probe.Shape.Base} (length {count})";
+        long? count = OdinWatchExpressions.FixedArrayLength(type);
+        return count is null || (index >= 0 && index < count)
+            ? null
+            : $"index {index} is out of bounds of {probe.Shape.Base} (length {count})";
     }
 
     private static DkmEvaluateExpressionAsyncResult Failed(DkmInspectionContext inspectionContext, DkmStackWalkFrame stackFrame, string text, string message)
@@ -450,8 +481,10 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         public const int IndexAddress = 5;
     }
 
-    // Longest string key or map storage that is searched; beyond it the lookup says so instead of reading it.
-    private const long MaxLookupBytes = 64L * 1024 * 1024;
+    // Largest key text read from a string variable, and largest keys array searched; beyond them the lookup says so instead of
+    // allocating (a garbage string variable or a huge map must not cost tens of megabytes per Watch refresh).
+    private const long MaxLookupKeyBytes = 1024 * 1024;
+    private const long MaxLookupStorageBytes = 16L * 1024 * 1024;
     private const int MaxStringKeyReads = 200_000;
 
     // `map[key]` typed in Watch: the keys are searched in the debuggee's memory (no hashing, so nothing depends on Odin's hasher):
@@ -511,7 +544,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 return;
             }
 
-            if (arrays.Capacity > MaxMapCapacity || keySize == 0 || arrays.Values - arrays.Keys > (ulong)MaxLookupBytes)
+            if (arrays.Capacity > MaxMapCapacity || keySize == 0 || arrays.Values - arrays.Keys > (ulong)MaxLookupStorageBytes)
             {
                 Fail($"{probe.Shape.Base} is too large to search (capacity {arrays.Capacity}, key size {keySize})");
                 return;
@@ -521,7 +554,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             string valueC = ToCType(valueType);
             DkmProcess process = inspectionContext.RuntimeInstance.Process;
             bool isString = keyC == OdinStringType;
-            byte[]? target = SearchKey(process, probe, keyC, keySize, isString, out string? keyProblem);
+            byte[]? target = SearchKey(process, probe, keyType, keyC, keySize, isString, out string? keyProblem);
             if (target is null)
             {
                 Fail(keyProblem ?? "the key could not be read");
@@ -529,11 +562,14 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             }
 
             Stopwatch timer = Stopwatch.StartNew();
-            ulong? slot = FindSlot(process, arrays, keySize, isString, target, out int used, out int comparisons, out string? scanProblem);
-            DebuggerLog.Write($"map lookup '{original.Text}': {used} used slots, {comparisons} string reads, {(slot is null ? "not found" : $"slot {slot}")}, {timer.ElapsedMilliseconds} ms");
+            OdinMapSearch.Outcome search = FindSlot(process, arrays, keySize, isString, target);
+            ulong? slot = search.Slot;
+            DebuggerLog.Write($"map lookup '{original.Text}': {search.Used} used slots, {search.TextReads} string reads, {search.Unreadable} unreadable, {(slot is null ? "not found" : $"slot {slot}")}, {timer.ElapsedMilliseconds} ms");
             if (slot is null)
             {
-                Fail(scanProblem ?? $"key {probe.Shape.Index} not found in {probe.Shape.Base} ({used} entries)");
+                Fail(search.ReadLimitReached
+                    ? $"the search stopped after {MaxStringKeyReads} string comparisons without finding the key {probe.Shape.Index} in {probe.Shape.Base} ({search.Used} entries)"
+                    : $"key {probe.Shape.Index} not found in {probe.Shape.Base} ({search.Used} entries)");
                 return;
             }
 
@@ -627,7 +663,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
     // The bytes a stored key must have to equal the typed one: the text of a string (a literal, or a string variable read from
     // memory), the number for keys of at most eight bytes, else the raw bytes of a variable of the key's type.
-    private static byte[]? SearchKey(DkmProcess process, MapProbe probe, string keyC, ulong keySize, bool isString, out string? problem)
+    private static byte[]? SearchKey(DkmProcess process, MapProbe probe, string keyType, string keyC, ulong keySize, bool isString, out string? problem)
     {
         problem = null;
         DkmSuccessEvaluationResult? number = probe.Values[MapProbe.IndexNumber];
@@ -645,7 +681,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 process.ReadMemory(address, DkmReadMemoryFlags.None, header);
                 ulong data = BitConverter.ToUInt64(header, 0);
                 long length = BitConverter.ToInt64(header, 8);
-                if (length is >= 0 and <= MaxLookupBytes && (data != 0 || length == 0))
+                if (length is >= 0 and <= MaxLookupKeyBytes && (data != 0 || length == 0))
                 {
                     byte[] text = new byte[length];
                     if (length > 0)
@@ -664,11 +700,18 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         bool floating = keyC is "float" or "double";
         if (!floating && keySize <= 8 && number is not null && TryParseSigned(number.Value, out long numeric))
         {
-            return OdinWatchExpressions.LittleEndian(numeric, (int)keySize);
+            // The key type's signedness comes from its Odin name; a value its type cannot hold is reported, not truncated.
+            byte[]? integer = OdinWatchExpressions.TryIntegerKey(numeric, (int)keySize, !(keyType.StartsWith("u", StringComparison.Ordinal)));
+            if (integer is null)
+            {
+                problem = $"key {numeric} does not fit the key type {keyType}, so it is not in {probe.Shape.Base}";
+            }
+
+            return integer;
         }
 
         ulong variable = AddressOf(probe);
-        if (variable != 0 && keySize <= MaxLookupBytes)
+        if (variable != 0 && keySize <= (ulong)MaxLookupKeyBytes)
         {
             byte[] raw = new byte[keySize];
             process.ReadMemory(variable, DkmReadMemoryFlags.None, raw);
@@ -679,19 +722,6 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         return null;
     }
 
-    private static bool BytesEqual(byte[] buffer, int offset, byte[] expected)
-    {
-        for (int i = 0; i < expected.Length; i++)
-        {
-            if (buffer[offset + i] != expected[i])
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     // Address of the typed key when it is a variable (the `&(index)` probe), else 0.
     private static ulong AddressOf(MapProbe probe)
     {
@@ -699,80 +729,32 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         return address is not null && TryParseSigned(address.Value, out long value) ? (ulong)value : 0;
     }
 
-    // Slot of the used entry whose key equals `target`, or null. String keys are compared by length first and their text is
-    // read only for equal lengths, at most MaxStringKeyReads times.
-    private static ulong? FindSlot(DkmProcess process, OdinMapLayout.MapArrays arrays, ulong keySize, bool isString, byte[] target, out int used, out int comparisons, out string? problem)
+    // Reads the map's hash and key arrays and searches them (OdinMapSearch); string bodies are read from the debuggee.
+    private static OdinMapSearch.Outcome FindSlot(DkmProcess process, OdinMapLayout.MapArrays arrays, ulong keySize, bool isString, byte[] target)
     {
-        problem = null;
-        used = 0;
-        comparisons = 0;
         byte[] hashBytes = new byte[arrays.Capacity * 8];
         process.ReadMemory(arrays.Hashes, DkmReadMemoryFlags.None, hashBytes);
         byte[] keyBytes = new byte[arrays.Values - arrays.Keys];
         process.ReadMemory(arrays.Keys, DkmReadMemoryFlags.None, keyBytes);
-        ulong? found = null;
-        for (ulong i = 0; i < arrays.Capacity; i++)
+        return OdinMapSearch.Find(hashBytes, keyBytes, arrays.Capacity, keySize, isString, target, (address, length) =>
         {
-            if (!OdinMapLayout.IsUsedHash(BitConverter.ToUInt64(hashBytes, (int)(i * 8))))
-            {
-                continue;
-            }
-
-            used++;
-            if (found is not null)
-            {
-                continue;
-            }
-
-            int offset = (int)OdinMapLayout.ElementOffset(i, keySize);
-            if (!isString)
-            {
-                if ((ulong)target.Length == keySize && BytesEqual(keyBytes, offset, target))
-                {
-                    found = i;
-                }
-
-                continue;
-            }
-
-            if (BitConverter.ToInt64(keyBytes, offset + 8) != target.Length)
-            {
-                continue;
-            }
-
-            if (target.Length == 0)
-            {
-                found = i;
-                continue;
-            }
-
-            if (comparisons >= MaxStringKeyReads)
-            {
-                problem = $"the search stopped after {MaxStringKeyReads} string comparisons without finding the key";
-                continue;
-            }
-
-            comparisons++;
             try
             {
-                byte[] stored = new byte[target.Length];
-                process.ReadMemory(BitConverter.ToUInt64(keyBytes, offset), DkmReadMemoryFlags.None, stored);
-                if (BytesEqual(stored, 0, target))
-                {
-                    found = i;
-                }
+                byte[] stored = new byte[length];
+                process.ReadMemory(address, DkmReadMemoryFlags.None, stored);
+                return stored;
             }
             catch (Exception ex)
             {
                 // A key whose text cannot be read (a dangling pointer) is skipped; the other keys are still searched.
                 if (Interlocked.Increment(ref m_FailureLogCount) <= LoggedFailureLimit)
                 {
-                    DebuggerLog.Write($"map lookup: the text of the key in slot {i} could not be read: {ex.Message} (further failures are not logged)");
+                    DebuggerLog.Write($"map lookup: the text of a key at 0x{address:x} could not be read: {ex.Message} (further failures are not logged)");
                 }
-            }
-        }
 
-        return found;
+                return null;
+            }
+        }, MaxStringKeyReads);
     }
 
     // Results that are not handed back to Visual Studio (failed or unused attempts) are closed so the debugger can release them.
@@ -791,17 +773,6 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     private static bool IsFailure(DkmEvaluateExpressionAsyncResult result)
     {
         return result.ErrorCode != 0 || result.ResultObject is null || result.ResultObject is DkmFailedEvaluationResult;
-    }
-
-    private static int PopCount(int value)
-    {
-        int count = 0;
-        for (; value != 0; value &= value - 1)
-        {
-            count++;
-        }
-
-        return count;
     }
 
     public void GetChildren(
