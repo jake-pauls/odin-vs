@@ -3,6 +3,7 @@ package main
 
 import "base:runtime"
 import "core:fmt"
+import "shapes"
 
 // M5.5 type-coverage target. Set a breakpoint on the `fmt.println("done")` line at the end of main
 // and look at Locals/Watch. Must-have types come first, stretch types after.
@@ -110,6 +111,12 @@ main :: proc() {
 		Pair{1, 2} = "a",
 		Pair{3, 4} = "b",
 	}
+	// Types from another package, in a slice and as map key and value.
+	pkg_points := []shapes.Point{{1, 2}, {3, 4}}
+	pkg_keys := map[shapes.Point]shapes.Point {
+		shapes.Point{1, 2} = shapes.Point{10, 20},
+		shapes.Point{3, 4} = shapes.Point{30, 40},
+	}
 	thing_values := map[int]Thing {
 		1 = Thing{name = "one", id = 1},
 		2 = Thing{name = "two", id = 2},
@@ -169,7 +176,7 @@ main :: proc() {
 	garbage_huge := transmute([]int)runtime.Raw_Slice{data = raw_data(ints), len = 5_000_000_000}
 	garbage_neg := transmute([]int)runtime.Raw_Slice{data = raw_data(ints), len = -1}
 
-	fmt.println("done", g_const_count, g_count, g_name, g_ints, g_dyn, g_map, g_things,ints, strs, empty_slice, nil_slice, dyn_ints, dyn_strs, dyn_empty, len(big), one, sub, scores, names, triple_keys, pair_keys, thing_values, many, int_set, name_set, color, flags, shape, anything, ptr, multi, fixed, mat, text, cstr, letter, ratio, ok)
+	fmt.println("done", g_const_count, g_count, g_name, g_ints, g_dyn, g_map, g_things,ints, strs, empty_slice, nil_slice, dyn_ints, dyn_strs, dyn_empty, len(big), one, sub, scores, names, triple_keys, pair_keys, pkg_points, pkg_keys, thing_values, many, int_set, name_set, color, flags, shape, anything, ptr, multi, fixed, mat, text, cstr, letter, ratio, ok)
 
 	delete(dyn_ints)
 	delete(dyn_strs)
@@ -180,6 +187,7 @@ main :: proc() {
 	delete(names)
 	delete(triple_keys)
 	delete(pair_keys)
+	delete(pkg_keys)
 	delete(thing_values)
 	delete(many)
 	delete(int_set)
