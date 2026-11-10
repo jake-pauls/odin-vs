@@ -127,6 +127,11 @@ main :: proc() {
 	}
 	delete_key(&many, 4)
 	delete_key(&many, 9)
+	// 1200 entries: the component shows at most 1000 and adds a `[shown] first 1000 of 1200` row (milestone G6).
+	huge_map := make(map[int]int)
+	for i in 1 ..= 1200 {
+		huge_map[i] = i
+	}
 	// Sets: zero-sized values (`map[K]struct{}`); the layout of such a map has no values array (M5.5 review, layout dump test).
 	int_set := map[int]struct{}{}
 	int_set[3] = {}
@@ -176,7 +181,7 @@ main :: proc() {
 	garbage_huge := transmute([]int)runtime.Raw_Slice{data = raw_data(ints), len = 5_000_000_000}
 	garbage_neg := transmute([]int)runtime.Raw_Slice{data = raw_data(ints), len = -1}
 
-	fmt.println("done", g_const_count, g_count, g_name, g_ints, g_dyn, g_map, g_things,ints, strs, empty_slice, nil_slice, dyn_ints, dyn_strs, dyn_empty, len(big), one, sub, scores, names, triple_keys, pair_keys, pkg_points, pkg_keys, thing_values, many, int_set, name_set, color, flags, shape, anything, ptr, multi, fixed, mat, text, cstr, letter, ratio, ok)
+	fmt.println("done", g_const_count, g_count, g_name, g_ints, g_dyn, g_map, g_things,ints, strs, empty_slice, nil_slice, dyn_ints, dyn_strs, dyn_empty, len(big), one, sub, scores, names, triple_keys, pair_keys, pkg_points, pkg_keys, thing_values, many, huge_map, int_set, name_set, color, flags, shape, anything, ptr, multi, fixed, mat, text, cstr, letter, ratio, ok)
 
 	delete(dyn_ints)
 	delete(dyn_strs)
@@ -190,6 +195,7 @@ main :: proc() {
 	delete(pkg_keys)
 	delete(thing_values)
 	delete(many)
+	delete(huge_map)
 	delete(int_set)
 	delete(name_set)
 	delete(million)
