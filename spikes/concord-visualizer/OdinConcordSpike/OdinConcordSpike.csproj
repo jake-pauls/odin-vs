@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <VSSDKBuildToolsAutoSetup>true</VSSDKBuildToolsAutoSetup>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GeneratePkgDefFile>false</GeneratePkgDefFile>
+    <IncludeDebugSymbolsInVSIXContainer>false</IncludeDebugSymbolsInVSIXContainer>
+    <IncludeCopyLocalReferencesInVSIXContainer>false</IncludeCopyLocalReferencesInVSIXContainer>
+    <CreateVsixContainer>true</CreateVsixContainer>
+    <DeployExtension>false</DeployExtension>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="18.9.820" />
+    <!-- Concord API (managed reference assembly) and vsdconfigtool; approved by the user 2026-11-04, versions from FINDINGS.md A3. -->
+    <PackageReference Include="Microsoft.VisualStudio.Debugger.Engine" Version="17.14.1051801" />
+    <PackageReference Include="Microsoft.VSSDK.Debugger.VSDConfigTool" Version="17.14.1051801" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The map layout math lives in OdinVS.Core (tested by OdinMapLayoutTests). The product VSIX already ships OdinVS.Core.dll
+         next to this assembly, so it is not copied into the spike VSIX; the spike VSIX alone no longer works (use merge-vsix-test.ps1). -->
+    <ProjectReference Include="..\..\..\src\OdinVS.Core\OdinVS.Core.csproj" Private="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="source.extension.vsixmanifest" />
+    <VsdConfigXmlFiles Include="OdinConcordSpike.vsdconfigxml" />
+    <!-- The compiled config is produced by vsdconfigtool at build time; ship it next to the assembly. -->
+    <Content Include="$(MSBuildProjectDirectory)\bin\$(Configuration)\net472\OdinConcordSpike.vsdconfig" Link="OdinConcordSpike.vsdconfig">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+  </ItemGroup>
+</Project>
