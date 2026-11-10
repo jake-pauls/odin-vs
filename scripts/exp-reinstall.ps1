@@ -44,6 +44,8 @@ Stop-Exp
 & (Join-Path $vs 'MSBuild\Current\Bin\MSBuild.exe') (Join-Path $repo 'src\OdinVS\OdinVS.csproj') /restore /t:Rebuild /p:Configuration=Debug /nologo /v:m
 if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
 
+$builtVersion = [regex]::Match((Get-Content $manifest -Raw -Encoding UTF8), '<Identity [^>]*Version="([^"]+)"').Groups[1].Value
+"Installing OdinVS $builtVersion into Exp (VS ignores a reinstall of the same version as the installed one: raise it with -Bump, and check Manage Extensions in Exp)."
 $installExit = Invoke-Gui (Join-Path $vs 'Common7\IDE\VSIXInstaller.exe') @('/quiet', '/rootSuffix:Exp', "`"$vsix`"")
 if ($installExit -ne 0) { throw "VSIXInstaller exited with $installExit" }
 [void] (Invoke-Gui $devenv @('/rootSuffix', 'Exp', '/updateconfiguration'))

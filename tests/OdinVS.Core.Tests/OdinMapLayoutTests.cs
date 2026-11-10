@@ -88,14 +88,11 @@ public sealed class OdinMapLayoutTests
         string core = Normalized(File.ReadAllText(Path.Combine(runtime, "core.odin")));
         string maps = Normalized(File.ReadAllText(Path.Combine(runtime, "dynamic_map_internal.odin")));
 
-        // Slices, dynamic arrays, strings: field names and order (the visualizer reads `.data`, `.len`, `.cap` and the
-        // header at offsets 8 and 16).
-        AssertContains(core, "Raw_Slice :: struct { data: rawptr, len: int, }");
-        AssertContains(core, "Raw_Dynamic_Array :: struct { data: rawptr, len: int, cap: int, allocator: Allocator, }");
-        AssertContains(core, "Raw_String :: struct { data: [^]byte, len: int, }");
+        // Slice, dynamic array, string and map header sizes and offsets are checked on a real program in
+        // RealHeaderLayoutsMatchWhatTheVisualizerReads; the visualizer also evaluates the member names `.data`, `.len`, `.cap`,
+        // which the compiler checks in that program's source (offset_of names them).
 
-        // Maps: the header, the cell size, the cell description.
-        AssertContains(core, "Raw_Map :: struct { data: uintptr, len: uintptr, allocator: Allocator, }");
+        // Maps: the cell size, the cell description.
         AssertContains(core, "MAP_CACHE_LINE_LOG2 :: 6");
         AssertContains(core, "MAP_CACHE_LINE_SIZE :: 1 << MAP_CACHE_LINE_LOG2");
         AssertContains(core, "Map_Hash :: uintptr");
@@ -117,7 +114,7 @@ public sealed class OdinMapLayoutTests
     [TestCategory("RequiresToolchain")]
     public void RealMapLayoutsMatchTheDecodingMath()
     {
-        List<MapDump> dumps = RunLayoutDump();
+        List<MapDump> dumps = RunLayoutDump().Maps;
         Assert.IsGreaterThanOrEqualTo(10, dumps.Count, "the dump program printed too few maps");
 
         foreach (MapDump dump in dumps)
@@ -153,6 +150,31 @@ public sealed class OdinMapLayoutTests
         Assert.IsTrue(dumps.Any(d => d.KeySize == 12 && d.Capacity == 8), "the 12-byte key, capacity-8 case (array after keys starts at byte 100) is missing");
     }
 
+    [TestMethod]
+    [TestCategory("RequiresToolchain")]
+    public void RealHeaderLayoutsMatchWhatTheVisualizerReads()
+    {
+        Dictionary<string, Dictionary<string, ulong>> headers = RunLayoutDump().Headers;
+
+        // The component reads a string header from memory (data at 0, len at 8) and evaluates `<name>.data`/`.len`/`.cap`.
+        AssertHeader(headers, "Raw_Slice", size: 16, ("data", 0), ("len", 8));
+        AssertHeader(headers, "Raw_String", size: 16, ("data", 0), ("len", 8));
+        AssertHeader(headers, "Raw_Dynamic_Array", size: 40, ("data", 0), ("len", 8), ("cap", 16), ("allocator", 24));
+
+        // The map math (OdinMapLayout) reads the data word at 0 and uses 8-byte hashes with the top bit as the tombstone.
+        AssertHeader(headers, "Raw_Map", size: 32, ("data", 0), ("len", 8), ("allocator", 16), ("map_hash", 8));
+    }
+
+    private static void AssertHeader(Dictionary<string, Dictionary<string, ulong>> headers, string name, ulong size, params (string Field, ulong Offset)[] fields)
+    {
+        Assert.IsTrue(headers.TryGetValue(name, out Dictionary<string, ulong>? actual), $"the dump program printed no HEADER line for {name}");
+        Assert.AreEqual(size, actual["size"], $"{name}: size");
+        foreach ((string field, ulong offset) in fields)
+        {
+            Assert.AreEqual(offset, actual[field], $"{name}.{field}: offset (the visualizer's decoding assumes this layout; see OdinEvaluator and OdinMapLayout)");
+        }
+    }
+
     private static string RuntimeDirectory()
     {
         RequireOdin();
@@ -186,7 +208,7 @@ public sealed class OdinMapLayoutTests
             $"Odin's base library no longer contains `{expected}`. The debugger visualizer's decoding (OdinMapLayout and the visualizer in spikes/concord-visualizer) depends on it: update both, FINDINGS.md, and re-run the Exp checklist.");
     }
 
-    private static List<MapDump> RunLayoutDump()
+    private static LayoutDump RunLayoutDump()
     {
         RequireOdin();
         string source = Path.Combine(RepoPaths.Root, "tests", "samples", "DebuggerLayout", "layout_dump.odin");
@@ -208,7 +230,7 @@ public sealed class OdinMapLayoutTests
         }
     }
 
-    private static List<MapDump> RunLayoutDumpIn(string work, string source)
+    private static LayoutDump RunLayoutDumpIn(string work, string source)
     {
         ProcessStartInfo start = new(OdinPath)
         {
@@ -236,14 +258,19 @@ public sealed class OdinMapLayoutTests
         return Parse(output.Result);
     }
 
-    private static List<MapDump> Parse(string text)
+    private static LayoutDump Parse(string text)
     {
         List<MapDump> dumps = [];
+        Dictionary<string, Dictionary<string, ulong>> headers = [];
         MapDump? current = null;
         foreach (string line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             string[] parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts[0] is "LAYOUT")
+            if (parts[0] is "HEADER")
+            {
+                headers[parts[1]] = KeyValues(parts.Skip(2));
+            }
+            else if (parts[0] is "LAYOUT")
             {
                 Dictionary<string, ulong> values = KeyValues(parts.Skip(1));
                 current = new MapDump(
@@ -262,7 +289,7 @@ public sealed class OdinMapLayoutTests
             }
         }
 
-        return dumps;
+        return new LayoutDump(dumps, headers);
     }
 
     private static Dictionary<string, ulong> KeyValues(IEnumerable<string> parts)
@@ -279,6 +306,8 @@ public sealed class OdinMapLayoutTests
 
         return values;
     }
+
+    private sealed record LayoutDump(List<MapDump> Maps, Dictionary<string, Dictionary<string, ulong>> Headers);
 
     private sealed record SlotDump(ulong Index, ulong Hash, ulong KeyOffset, ulong ValueOffset);
 

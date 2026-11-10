@@ -5,7 +5,7 @@ using System.IO;
 using Microsoft.VisualStudio.Debugger;
 using Microsoft.VisualStudio.Debugger.CallStack;
 
-namespace OdinConcordSpike;
+namespace OdinVS.Debugger;
 
 // Decides whether a module was compiled from Odin. The evaluator is registered for language C, which MSVC C code and Odin
 // share, and `CompilerId` is empty for both (M5.5 Phase F, FINDINGS.md), so the module's symbol file is searched for a
@@ -14,7 +14,7 @@ namespace OdinConcordSpike;
 // pattern, so `.odinproj`, `.odinfile`, `x.odin\` and the `[file.odin]` spelling inside symbol names do not match.
 // The answer is cached per module once it is definitive; a missing or unreadable symbol file is retried on the next frame.
 // A module that mixes Odin with C objects counts as Odin as a whole.
-public static class OdinModules
+internal static class OdinModules
 {
     private static readonly byte[] m_Extension = [.. System.Text.Encoding.ASCII.GetBytes(".odin"), 0];
     private static readonly ConcurrentDictionary<Guid, bool> m_Cache = new();
@@ -65,10 +65,10 @@ public static class OdinModules
             long sizeMegabytes = new FileInfo(path!).Length / (1024 * 1024);
             bool odin = FileContains(path!, m_Extension);
             double ms = (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
-            SpikeLog.Write($"odin module check: {instance.FullName} (symbols {path}) -> {(odin ? "Odin" : "not Odin")} in {ms:F1} ms");
+            DebuggerLog.Write($"odin module check: {instance.FullName} (symbols {path}) -> {(odin ? "Odin" : "not Odin")} in {ms:F1} ms");
             if (ms > SlowScanMilliseconds)
             {
-                SpikeLog.Write($"WARNING: the Odin check of {instance.FullName} took {ms / 1000:F1} s for a {sizeMegabytes} MB symbol file; Visual Studio may have paused while the first locals were shown (once per module and session)");
+                DebuggerLog.Write($"WARNING: the Odin check of {instance.FullName} took {ms / 1000:F1} s for a {sizeMegabytes} MB symbol file; Visual Studio may have paused while the first locals were shown (once per module and session)");
             }
 
             return odin;
@@ -85,7 +85,7 @@ public static class OdinModules
     {
         if (m_LoggedUndecided.TryAdd(instance.UniqueId, true))
         {
-            SpikeLog.Write($"odin module check for {instance.FullName} undecided, treating as not Odin until it can be read: {reason}");
+            DebuggerLog.Write($"odin module check for {instance.FullName} undecided, treating as not Odin until it can be read: {reason}");
         }
     }
 

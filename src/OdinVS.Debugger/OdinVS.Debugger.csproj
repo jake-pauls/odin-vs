@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Concord API (managed reference assembly) and vsdconfigtool; approved by the user 2026-11-04, versions from FINDINGS.md A3.
+         The tool compiles OdinVS.Debugger.vsdconfigxml into bin\<Configuration>\net472\OdinVS.Debugger.vsdconfig, which OdinVS.csproj
+         ships as the DebuggerEngineExtension asset. -->
+    <PackageReference Include="Microsoft.VisualStudio.Debugger.Engine" Version="17.14.1051801" />
+    <PackageReference Include="Microsoft.VSSDK.Debugger.VSDConfigTool" Version="17.14.1051801" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The map layout math lives in OdinVS.Core (tested by OdinMapLayoutTests); the product VSIX ships OdinVS.Core.dll once. -->
+    <ProjectReference Include="..\OdinVS.Core\OdinVS.Core.csproj" Private="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <VsdConfigXmlFiles Include="OdinVS.Debugger.vsdconfigxml" />
+  </ItemGroup>
+</Project>
