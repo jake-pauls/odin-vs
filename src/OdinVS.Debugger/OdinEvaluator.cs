@@ -1447,7 +1447,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 if (slots.Count > MaxShownSlots)
                 {
                     // Every shown entry costs one or two evaluator calls, so a huge map is cut and says so.
-                    shownPseudo = [.. pseudo, Pseudo(result, inspectionContext, "[shown]", "len", $"first {MaxShownSlots} of {slots.Count}")];
+                    shownPseudo = [.. pseudo, Pseudo(result, inspectionContext, "[shown]", "shown", $"first {MaxShownSlots} of {slots.Count}")];
                     slots.RemoveRange(MaxShownSlots, slots.Count - MaxShownSlots);
                 }
 

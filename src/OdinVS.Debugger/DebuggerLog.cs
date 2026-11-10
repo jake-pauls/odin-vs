@@ -15,7 +15,7 @@ internal static class DebuggerLog
     private const long MaxBytes = 1024 * 1024;
 
     private static readonly object m_Lock = new();
-    private static readonly int m_ProcessId = GetProcessId();
+    private static int m_ProcessId;
     private static string? m_Path;
 
     private static int GetProcessId()
@@ -31,6 +31,11 @@ internal static class DebuggerLog
             lock (m_Lock)
             {
                 // Computed here, not in a static initializer: a failure there would throw from every call.
+                if (m_ProcessId == 0)
+                {
+                    m_ProcessId = GetProcessId();
+                }
+
                 m_Path ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OdinVS", FileName);
                 Directory.CreateDirectory(Path.GetDirectoryName(m_Path)!);
                 Rotate(m_Path);

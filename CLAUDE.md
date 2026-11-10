@@ -196,7 +196,8 @@ main
 src/OdinVS.Core/            # netstandard2.0, no VS refs: error-output parser, odin arg builder,
                             # ols.json generator, version-compat check, .odinproj reader
 tests/OdinVS.Core.Tests/    # MSTest
-src/OdinVS.Debugger/         # net472 Concord component (M5.5): Odin slices, dynamic arrays, maps, unions, matrices, strings and Watch rewrites, behind a `.odin` PDB gate; `.vsdconfig` compiled by vsdconfigtool and shipped as a `DebuggerEngineExtension` asset. Uses `OdinVS.Core` (map math): tool-warning info bar (OdinProject UI context) and `OdinDebugLaunchProvider` (F5/Ctrl+F5). The CPS project type itself is registered in src/OdinVS/odin.pkgdef
+src/OdinVS.Debugger/         # net472 Concord component (M5.5): Odin slices, dynamic arrays, maps, unions, matrices, strings and Watch rewrites, behind a `.odin` PDB gate; `.vsdconfig` compiled by vsdconfigtool and shipped as a `DebuggerEngineExtension` asset. Uses `OdinVS.Core` (map math).
+src/OdinVS.ProjectSystem/   # net472 VS package: tool-warning info bar (OdinProject UI context) and `OdinDebugLaunchProvider` (F5/Ctrl+F5). The CPS project type itself is registered in src/OdinVS/odin.pkgdef
 src/OdinVS.Build/           # Odin.Sdk package source: Sdk.props/targets, CPS rules, task DLL from Core. LOCAL ONLY, see nuget/README.md
 nuget/                       # local feed written by scripts\pack-sdk.ps1; the *.nupkg is git-ignored (never commit or publish), only its README is tracked
 tests/OdinVS.Build.Tests/   # MSTest tier 3: packs the SDK to a scratch feed, runs `dotnet msbuild` on copies of tests/samples with real odin

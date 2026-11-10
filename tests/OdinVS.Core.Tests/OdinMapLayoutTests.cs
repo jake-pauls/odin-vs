@@ -162,7 +162,8 @@ public sealed class OdinMapLayoutTests
         AssertHeader(headers, "Raw_Dynamic_Array", size: 40, ("data", 0), ("len", 8), ("cap", 16), ("allocator", 24));
 
         // The map math (OdinMapLayout) reads the data word at 0 and uses 8-byte hashes with the top bit as the tombstone.
-        AssertHeader(headers, "Raw_Map", size: 32, ("data", 0), ("len", 8), ("allocator", 16), ("map_hash", 8));
+        AssertHeader(headers, "Raw_Map", size: 32, ("data", 0), ("len", 8), ("allocator", 16));
+        Assert.AreEqual(8UL, headers["Raw_Map"]["map_hash"], "Map_Hash size in bytes");
     }
 
     private static void AssertHeader(Dictionary<string, Dictionary<string, ulong>> headers, string name, ulong size, params (string Field, ulong Offset)[] fields)

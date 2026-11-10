@@ -69,10 +69,17 @@ public sealed class DebuggerComponentRegistrationTests
     [TestMethod]
     public void ProductProjectBuildsAndShipsTheComponent()
     {
-        string csproj = File.ReadAllText(Src("OdinVS", "OdinVS.csproj"));
-        StringAssert.Contains(csproj, @"..\OdinVS.Debugger\OdinVS.Debugger.csproj");
-        StringAssert.Contains(csproj, "OdinVS.Debugger.vsdconfig");
-        StringAssert.Contains(File.ReadAllText(Src("OdinVS.Debugger", "OdinVS.Debugger.csproj")), "VsdConfigXmlFiles Include=\"OdinVS.Debugger.vsdconfigxml\"");
+        XDocument product = XDocument.Load(Src("OdinVS", "OdinVS.csproj"));
+        string[] references = [.. product.Descendants("ProjectReference").Select(r => (string?)r.Attribute("Include") ?? string.Empty)];
+        CollectionAssert.Contains(references, @"..\OdinVS.Debugger\OdinVS.Debugger.csproj");
+
+        // The Content item and the manifest asset must name the same file, or VS silently never loads the component.
+        XElement content = product.Descendants("Content").Single(c => ((string?)c.Attribute("Include") ?? string.Empty).EndsWith("OdinVS.Debugger.vsdconfig", StringComparison.Ordinal));
+        Assert.AreEqual("OdinVS.Debugger.vsdconfig", (string?)content.Attribute("Link"));
+        Assert.AreEqual("true", (string?)content.Element("IncludeInVSIX"));
+
+        XDocument component = XDocument.Load(Src("OdinVS.Debugger", "OdinVS.Debugger.csproj"));
+        Assert.AreEqual(1, component.Descendants("VsdConfigXmlFiles").Count(f => (string?)f.Attribute("Include") == "OdinVS.Debugger.vsdconfigxml"));
     }
 
     [TestMethod]
@@ -90,7 +97,8 @@ public sealed class DebuggerComponentRegistrationTests
     {
         // The evaluator forwards everything to the native evaluator unless the frame's module is an Odin module.
         string evaluator = File.ReadAllText(Src("OdinVS.Debugger", "OdinEvaluator.cs"));
-        StringAssert.Contains(evaluator, "OdinModules.IsOdinFrame(");
+        // One gate call per entry point (locals, arguments, evaluate, children): fewer means a path that is not scoped.
+        Assert.IsGreaterThanOrEqualTo(4, Regex.Matches(evaluator, @"OdinModules\.IsOdinFrame\(").Count);
         string modules = File.ReadAllText(Src("OdinVS.Debugger", "OdinModules.cs"));
         StringAssert.Contains(modules, "\".odin\"");
     }
