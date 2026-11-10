@@ -127,6 +127,10 @@ main :: proc() {
 	}
 	delete_key(&many, 4)
 	delete_key(&many, 9)
+	// Keys held in variables, for Watch lookups such as `many[key_int]`, `name_set[key_name]`, `pkg_keys[key_point]`.
+	key_int := 5
+	key_name := "green"
+	key_point := shapes.Point{3, 4}
 	// 1200 entries: the component shows at most 1000 and adds a `[shown] first 1000 of 1200` row (milestone G6).
 	huge_map := make(map[int]int)
 	for i in 1 ..= 1200 {
@@ -181,7 +185,7 @@ main :: proc() {
 	garbage_huge := transmute([]int)runtime.Raw_Slice{data = raw_data(ints), len = 5_000_000_000}
 	garbage_neg := transmute([]int)runtime.Raw_Slice{data = raw_data(ints), len = -1}
 
-	fmt.println("done", g_const_count, g_count, g_name, g_ints, g_dyn, g_map, g_things,ints, strs, empty_slice, nil_slice, dyn_ints, dyn_strs, dyn_empty, len(big), one, sub, scores, names, triple_keys, pair_keys, pkg_points, pkg_keys, thing_values, many, huge_map, int_set, name_set, color, flags, shape, anything, ptr, multi, fixed, mat, text, cstr, letter, ratio, ok)
+	fmt.println("done", g_const_count, g_count, g_name, g_ints, g_dyn, g_map, g_things,ints, strs, empty_slice, nil_slice, dyn_ints, dyn_strs, dyn_empty, len(big), one, sub, scores, names, triple_keys, pair_keys, pkg_points, pkg_keys, thing_values, many, huge_map, key_int, key_name, key_point, int_set, name_set, color, flags, shape, anything, ptr, multi, fixed, mat, text, cstr, letter, ratio, ok)
 
 	delete(dyn_ints)
 	delete(dyn_strs)

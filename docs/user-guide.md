@@ -124,6 +124,39 @@ The values must be plain text: VS reads them without evaluating `$(...)` (see `d
 - **If a different "Odin CPS Spike" extension is installed** (an early development build) uninstall it; it registers the same project type.
 - **Warnings about the toolchain:** when a solution holds an `.odinproj`, an info bar at the top of the window appears if `odin.exe` is not found, the bundled `ols.exe` is missing, or the installed odin is not the version the bundled ols was built for (messages say what to fix; *Open log* opens `%LOCALAPPDATA%\OdinVS\odinvs.log`). The check runs each time a solution containing an `.odinproj` is opened or reloaded, and a new result replaces the previous bar.
 
+## Debugging in Visual Studio
+
+Press F5 (or Ctrl+F5) on an Odin project; a Debug build carries `-debug`, so breakpoints in `.odin` files bind. The extension also ships a debugger component that makes Odin values readable in **Locals**, **Watch** and data tips (Autos shows the native display for now). It only acts on Odin programs (a module whose debug symbols name `.odin` sources), so C and C++ debugging in the same solution is unchanged.
+
+**What the displays show**
+
+| Odin value | Shown as |
+|---|---|
+| `[]T` slice, `[dynamic]T` | `{len=N}` / `{len=N cap=M}`; children `[len]`, `[cap]` (dynamic only) and the elements |
+| `string` | the text in quotes (cut at 256 bytes, then `...`); `data` and `len` stay available as children |
+| `map[K]V` | `{len=N}`; children `[len]` and one `[key]` entry per item (keys may be strings, numbers or structs); a set `map[K]struct{}` lists `[key] {}`; at most 1000 entries are listed, with a `[shown] first 1000 of N` row |
+| `union` | the active variant only |
+| `matrix[R, C]T` | one row per line, with a `[storage]` row (`column-major` by default, `row-major` for `#row_major`) |
+| `int`, `u8`, `f32`, `rune`, `cstring`, ... | Odin names for the scalar types (the debug symbols cannot tell `int` from `i64`, so `int` is a best guess) |
+| `enum`, `bit_set`, `[N]T` | already readable without the component |
+
+Not covered: `any`, `Small_Array`, `#soa` arrays and `Maybe`. Pointers `[^]T` display as plain pointers.
+
+**Expressions you can type in Watch** (checked in the Visual Studio Experimental instance on 2026-11-09)
+
+| Expression | Result |
+|---|---|
+| `len(x)`, `cap(x)` | the length or capacity of a slice, dynamic array or string (`cap` for dynamic arrays); shown as `x.len`, `x.cap` |
+| `x[i]` | element `i` of a slice, dynamic array or string; shown as `x.data[i]`. An index below 0 or at or above `len` is an error that names the length, for example `index 99 is out of bounds of ints (length 3)` |
+| `a[i]` on a fixed array `[N]T` | the element; an out-of-range index is an error with the length |
+| `x[i].field`, `x[i].list[j]` | every index in the expression is checked |
+| `m[key]` on a `map[K]V` | the value stored under `key`. `key` can be a literal (`m["red"]`, `m[5]`), a variable (`m[name]`, `m[point]`) or, for a set, any of these (the result is `{}`). A key that is not in the map is an error (`key "zzz" not found in m (2 entries)`) |
+| `m[key].field` | a field of the value found (a string field shows as the native `{data, len}` text) |
+| `x.data[i]`, `x.len` | the real fields, unchecked |
+
+Limits: a map key must be a literal or a plain variable, not an expression (`m[a[0]]` is not supported yet). A map is searched entry by entry in the debuggee's memory: fine for tens of thousands of entries, and the search stops after 200,000 string comparisons or on a map over a million slots, saying so. Type names from other packages work (`shapes.Point`). `x[i]` on a `[^]T` is C-style and not range-checked, because the pointer has no length.
+
+If a display looks wrong, Visual Studio shows the native `{data, len}` value instead, and `%LOCALAPPDATA%\OdinVS\odinvs-debugger.log` says why (it rotates at 1 MB). If the component fails to load after a Visual Studio update, strings and slices fall back to that native display.
 ## Diagnostics
 
 Build output uses MSBuild's canonical format, so Visual Studio shows entries in the Error List and double-click navigates to the line:

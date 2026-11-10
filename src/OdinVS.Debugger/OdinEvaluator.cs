@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.VisualStudio.Debugger;
@@ -29,6 +30,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
     private static readonly Regex m_SliceType = new(@"^\[\](?<elem>.+)$", RegexOptions.Compiled);
     private static readonly Regex m_DynamicType = new(@"^\[dynamic\](?<elem>.+)$", RegexOptions.Compiled);
+    private static readonly Regex m_FixedPrefix = new(@"^\[(?<n>\d+)\]", RegexOptions.Compiled);
     private static readonly Regex m_FixedType = new(@"^(?<base>[^\[\]]+)\[(?<n>\d+)\]$", RegexOptions.Compiled);
     private static readonly Regex m_LenCap = new(@"len=(?<len>0x[0-9a-fA-F]+|\d+) cap=(?<cap>0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled | RegexOptions.RightToLeft);
     private static readonly Regex m_Len = new(@"len=(?<len>0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled | RegexOptions.RightToLeft);
@@ -168,12 +170,18 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         EvaluateWithRewrites(inspectionContext, workList, expression, first, text, stackFrame, completionRoutine);
     }
 
-    // Evaluates `first`; if the C evaluator rejects it and the text has `[`, Odin indexing is tried by inserting `.data`
+    // Evaluates `first`. If the C evaluator rejects it and the text has `[`, Odin indexing is tried by inserting `.data`
     // before some of the brackets (Odin indexes the slice, C indexes a pointer). Which brackets belong to slices is not
     // known without types, so every subset is tried (at most 2^MaxIndexRewrites) in ONE flat batch issued from the first
-    // failure's callback, and the first success in subset order wins. Chaining the retries (each started from the previous
-    // one's callback) hung at the third level (`things[0].tags[1]`); a thread-pool workaround crashed devenv or hung too,
-    // so nothing here nests deeper than two calls and no thread is created. Attempts carry RetryMarker so they are not rewritten again.
+    // failure's callback, and the first success in subset order wins. Each attempt comes with a bounds condition
+    // (`i >= 0 && i < a.len`) in the same batch, so an index outside the container is an error instead of memory past its end.
+    // Chaining the retries (each started from the previous one's callback) hung at the third level (`things[0].tags[1]`); a
+    // thread-pool workaround crashed devenv or hung too, so nothing here nests deeper than two calls and no thread is created.
+    // Attempts carry RetryMarker so they are not rewritten again.
+    //
+    // `name[key]` on a map is looked up in the debuggee's memory (LookupMapEntry). The map's type, header and the key are
+    // not known before `first` fails, and a third level is not allowed, so for text of that shape the probes are issued
+    // together with `first` (still one flat level) and used only if `first` fails.
     private void EvaluateWithRewrites(
         DkmInspectionContext inspectionContext,
         DkmWorkList workList,
@@ -183,97 +191,592 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         DkmStackWalkFrame stackFrame,
         DkmCompletionRoutine<DkmEvaluateExpressionAsyncResult> completionRoutine)
     {
+        OdinWatchExpressions.MapLookupShape? shape = OdinWatchExpressions.SplitLookup(firstText);
+        if (shape is null)
+        {
+            inspectionContext.EvaluateExpression(workList, first, stackFrame, firstResult =>
+                ContinueAfterFirst(inspectionContext, workList, original, firstText, stackFrame, firstResult, null, completionRoutine));
+            return;
+        }
+
+        string[] probeExpressions =
+        [
+            shape.Base,
+            $"{shape.Base}.data",
+            $"sizeof({shape.Base}.data->key)",
+            $"sizeof({shape.Base}.data->value)",
+            shape.Index,
+            $"(__int64)({shape.Index})",
+            $"(unsigned __int64)&({shape.Index})",
+        ];
+        DkmEvaluateExpressionAsyncResult? firstOutcome = null;
+        DkmSuccessEvaluationResult?[]? probeValues = null;
+        int remaining = 2;
+        void OneDone()
+        {
+            if (Interlocked.Decrement(ref remaining) == 0)
+            {
+                ContinueAfterFirst(inspectionContext, workList, original, firstText, stackFrame, firstOutcome!.Value, new MapProbe(shape, probeValues!), completionRoutine);
+            }
+        }
+
         inspectionContext.EvaluateExpression(workList, first, stackFrame, firstResult =>
         {
-            if (!IsFailure(firstResult))
-            {
-                TransformAllAsync([firstResult.ResultObject!], inspectionContext, workList, transformed =>
-                    completionRoutine(new DkmEvaluateExpressionAsyncResult(transformed[0])));
-                return;
-            }
-
-            List<int> brackets = [];
-            for (int i = 0; i < firstText.Length && brackets.Count < MaxIndexRewrites; i++)
-            {
-                if (firstText[i] == '[')
-                {
-                    brackets.Add(i);
-                }
-            }
-
-            if (brackets.Count == 0)
-            {
-                completionRoutine(firstResult);
-                return;
-            }
-
-            // Subsets in order of size, then value, so the fewest rewrites that work win.
-            List<int> masks = [];
-            for (int mask = 1; mask < (1 << brackets.Count); mask++)
-            {
-                masks.Add(mask);
-            }
-
-            masks.Sort((x, y) =>
-            {
-                int byCount = PopCount(x).CompareTo(PopCount(y));
-                return byCount != 0 ? byCount : x.CompareTo(y);
-            });
-
-            string[] texts = new string[masks.Count];
-            DkmEvaluateExpressionAsyncResult?[] results = new DkmEvaluateExpressionAsyncResult?[masks.Count];
-            int pending = masks.Count;
-            for (int k = 0; k < masks.Count; k++)
-            {
-                int slot = k;
-                string rewritten = firstText;
-                for (int b = brackets.Count - 1; b >= 0; b--)
-                {
-                    if ((masks[k] & (1 << b)) != 0)
-                    {
-                        rewritten = rewritten.Insert(brackets[b], ".data");
-                    }
-                }
-
-                texts[slot] = rewritten;
-                DkmLanguageExpression attempt = DkmLanguageExpression.Create(original.Language, original.CompilationFlags, rewritten, new RetryMarker());
-                inspectionContext.EvaluateExpression(workList, attempt, stackFrame, result =>
-                {
-                    results[slot] = result;
-                    if (Interlocked.Decrement(ref pending) != 0)
-                    {
-                        return;
-                    }
-
-                    int chosen = -1;
-                    for (int i = 0; i < results.Length && chosen < 0; i++)
-                    {
-                        if (!IsFailure(results[i]!.Value))
-                        {
-                            chosen = i;
-                        }
-                    }
-
-                    for (int i = 0; i < results.Length; i++)
-                    {
-                        if (i != chosen)
-                        {
-                            CloseResult(results[i]!.Value.ResultObject);
-                        }
-                    }
-
-                    if (chosen >= 0)
-                    {
-                        DebuggerLog.Write($"expression '{original.Text}' evaluated as '{texts[chosen]}'");
-                        // Already two calls deep: no further evaluation here (see above), so a cut-off header is not resolved.
-                        completionRoutine(new DkmEvaluateExpressionAsyncResult(Transform(results[chosen]!.Value.ResultObject!)));
-                        return;
-                    }
-
-                    completionRoutine(firstResult);
-                });
-            }
+            firstOutcome = firstResult;
+            OneDone();
         });
+        EvalBatch(inspectionContext, workList, stackFrame, probeExpressions, values =>
+        {
+            probeValues = values;
+            OneDone();
+        });
+    }
+
+    private void ContinueAfterFirst(
+        DkmInspectionContext inspectionContext,
+        DkmWorkList workList,
+        DkmLanguageExpression original,
+        string firstText,
+        DkmStackWalkFrame stackFrame,
+        DkmEvaluateExpressionAsyncResult firstResult,
+        MapProbe? probe,
+        DkmCompletionRoutine<DkmEvaluateExpressionAsyncResult> completionRoutine)
+    {
+        if (!IsFailure(firstResult))
+        {
+            // A fixed array is indexed natively, which does not check the index: the probe has its length in the type name.
+            string? outOfRange = probe is null ? null : FixedArrayProblem(probe);
+            CloseProbe(probe);
+            if (outOfRange is not null)
+            {
+                CloseResult(firstResult.ResultObject);
+                completionRoutine(Failed(inspectionContext, stackFrame, original.Text, outOfRange));
+                return;
+            }
+
+            TransformAllAsync([firstResult.ResultObject!], inspectionContext, workList, transformed =>
+                completionRoutine(new DkmEvaluateExpressionAsyncResult(transformed[0])));
+            return;
+        }
+
+        if (probe?.Values[MapProbe.BaseValue] is DkmSuccessEvaluationResult mapResult && mapResult.Type is not null && TryParseMapType(mapResult.Type, out _, out _))
+        {
+            LookupMapEntry(inspectionContext, workList, original, stackFrame, probe, mapResult, completionRoutine);
+            return;
+        }
+
+        CloseProbe(probe);
+        IReadOnlyList<int> brackets = OdinWatchExpressions.FindBrackets(firstText, MaxIndexRewrites);
+        if (brackets.Count == 0)
+        {
+            completionRoutine(firstResult);
+            return;
+        }
+
+        // Subsets in order of size, then value, so the fewest rewrites that work win.
+        List<int> masks = [];
+        for (int mask = 1; mask < (1 << brackets.Count); mask++)
+        {
+            masks.Add(mask);
+        }
+
+        masks.Sort((x, y) =>
+        {
+            int byCount = PopCount(x).CompareTo(PopCount(y));
+            return byCount != 0 ? byCount : x.CompareTo(y);
+        });
+
+        OdinWatchExpressions.IndexRewrite[] rewrites = [.. masks.Select(m => OdinWatchExpressions.Rewrite(firstText, brackets, m))];
+        DkmEvaluateExpressionAsyncResult?[] results = new DkmEvaluateExpressionAsyncResult?[masks.Count];
+        // Per attempt and per inserted index: the index as a number and the container's `len`, for the bounds check and its message.
+        DkmEvaluateExpressionAsyncResult?[][] bounds = [.. rewrites.Select(r => new DkmEvaluateExpressionAsyncResult?[r.Checks.Count * 2])];
+        int pending = masks.Count + bounds.Sum(b => b.Length);
+
+        void OneAttemptDone()
+        {
+            if (Interlocked.Decrement(ref pending) != 0)
+            {
+                return;
+            }
+
+            int chosen = -1;
+            for (int i = 0; i < results.Length && chosen < 0; i++)
+            {
+                if (!IsFailure(results[i]!.Value))
+                {
+                    chosen = i;
+                }
+            }
+
+            string? problem = chosen >= 0 ? BoundsProblem(rewrites[chosen], bounds[chosen], original.Text) : null;
+            for (int i = 0; i < results.Length; i++)
+            {
+                foreach (DkmEvaluateExpressionAsyncResult? measured in bounds[i])
+                {
+                    CloseResult(measured?.ResultObject);
+                }
+
+                if (i != chosen || problem is not null)
+                {
+                    CloseResult(results[i]!.Value.ResultObject);
+                }
+            }
+
+            if (problem is not null)
+            {
+                DebuggerLog.Write($"expression '{original.Text}' rejected: {problem}");
+                completionRoutine(Failed(inspectionContext, stackFrame, original.Text, problem));
+                return;
+            }
+
+            if (chosen >= 0)
+            {
+                DebuggerLog.Write($"expression '{original.Text}' evaluated as '{rewrites[chosen].Text}'");
+                // Already two calls deep: no further evaluation here (see above), so a cut-off header is not resolved.
+                completionRoutine(new DkmEvaluateExpressionAsyncResult(Transform(results[chosen]!.Value.ResultObject!)));
+                return;
+            }
+
+            completionRoutine(firstResult);
+        }
+
+        for (int k = 0; k < masks.Count; k++)
+        {
+            int slot = k;
+            DkmLanguageExpression attempt = DkmLanguageExpression.Create(original.Language, original.CompilationFlags, rewrites[slot].Text, new RetryMarker());
+            inspectionContext.EvaluateExpression(workList, attempt, stackFrame, result =>
+            {
+                results[slot] = result;
+                OneAttemptDone();
+            });
+            for (int c = 0; c < rewrites[slot].Checks.Count; c++)
+            {
+                OdinWatchExpressions.IndexCheck check = rewrites[slot].Checks[c];
+                string[] measures = [$"(__int64)({check.Index})", $"{check.Base}.len"];
+                for (int m = 0; m < 2; m++)
+                {
+                    int measureSlot = c * 2 + m;
+                    DkmLanguageExpression measure = DkmLanguageExpression.Create(original.Language, original.CompilationFlags, measures[m], new RetryMarker());
+                    inspectionContext.EvaluateExpression(workList, measure, stackFrame, result =>
+                    {
+                        bounds[slot][measureSlot] = result;
+                        OneAttemptDone();
+                    });
+                }
+            }
+        }
+    }
+
+    // Null when every index is inside its container, or when that cannot be told (no `.len`: not an Odin container, shown as evaluated).
+    private static string? BoundsProblem(OdinWatchExpressions.IndexRewrite rewrite, DkmEvaluateExpressionAsyncResult?[] measured, string text)
+    {
+        for (int c = 0; c < rewrite.Checks.Count; c++)
+        {
+            DkmEvaluateExpressionAsyncResult? indexResult = measured[c * 2];
+            DkmEvaluateExpressionAsyncResult? lengthResult = measured[c * 2 + 1];
+            if (indexResult is null || lengthResult is null
+                || IsFailure(indexResult.Value) || IsFailure(lengthResult.Value)
+                || indexResult.Value.ResultObject is not DkmSuccessEvaluationResult indexValue
+                || lengthResult.Value.ResultObject is not DkmSuccessEvaluationResult lengthValue
+                || !TryParseSigned(indexValue.Value, out long index)
+                || !TryParseSigned(lengthValue.Value, out long length))
+            {
+                DebuggerLog.Write($"bounds of {rewrite.Checks[c].Index} in {rewrite.Checks[c].Base} (in '{text}') could not be checked, shown without a check");
+                continue;
+            }
+
+            if (index < 0 || index >= length)
+            {
+                return $"index {index} is out of bounds of {rewrite.Checks[c].Base} (length {length})";
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FixedArrayProblem(MapProbe probe)
+    {
+        string? type = (probe.Values[MapProbe.BaseValue] as DkmSuccessEvaluationResult)?.Type;
+        if (type is null || probe.Values[MapProbe.IndexNumber] is not DkmSuccessEvaluationResult number || !TryParseSigned(number.Value, out long index))
+        {
+            return null;
+        }
+
+        Match odinStyle = m_FixedPrefix.Match(type);
+        Match cStyle = m_FixedType.Match(type);
+        string? length = odinStyle.Success ? odinStyle.Groups["n"].Value : cStyle.Success ? cStyle.Groups["n"].Value : null;
+        if (length is null || !long.TryParse(length, out long count) || (index >= 0 && index < count))
+        {
+            return null;
+        }
+
+        return $"index {index} is out of bounds of {probe.Shape.Base} (length {count})";
+    }
+
+    private static DkmEvaluateExpressionAsyncResult Failed(DkmInspectionContext inspectionContext, DkmStackWalkFrame stackFrame, string text, string message)
+    {
+        return new DkmEvaluateExpressionAsyncResult(DkmFailedEvaluationResult.Create(inspectionContext, stackFrame, text, text, message, DkmEvaluationResultFlags.None, null, null));
+    }
+
+    private static void CloseProbe(MapProbe? probe)
+    {
+        if (probe is null)
+        {
+            return;
+        }
+
+        foreach (DkmSuccessEvaluationResult? value in probe.Values)
+        {
+            CloseResult(value);
+        }
+    }
+
+    // What EvaluateWithRewrites learns about `Base[Index]` next to evaluating it: the evaluations of the map base, its `data`
+    // member, the key and value sizes (as GetMapChildren reads them), and the index as written, as a number and as an address
+    // (a result of this kind of evaluation carries no Address of its own). Null where one failed.
+    private sealed class MapProbe(OdinWatchExpressions.MapLookupShape shape, DkmSuccessEvaluationResult?[] values)
+    {
+        public OdinWatchExpressions.MapLookupShape Shape { get; } = shape;
+
+        public DkmSuccessEvaluationResult?[] Values { get; } = values;
+
+        public const int BaseValue = 0;
+        public const int DataValue = 1;
+        public const int KeySizeValue = 2;
+        public const int ValueSizeValue = 3;
+        public const int IndexValue = 4;
+        public const int IndexNumber = 5;
+        public const int IndexAddress = 6;
+    }
+
+    // Longest string key or map storage that is searched; beyond it the lookup says so instead of reading it.
+    private const long MaxLookupBytes = 64L * 1024 * 1024;
+    private const int MaxStringKeyReads = 200_000;
+
+    // `map[key]` typed in Watch: the keys are searched in the debuggee's memory (no hashing, so nothing depends on Odin's hasher):
+    // the used slots come from the hash array as when expanding a map, each key is compared with the typed one, and the
+    // value of the slot found is evaluated with the same cast the map's children use. A missing key is an error (Odin would
+    // give a zero value, which a debugger should not invent). The result's FullName is the text that was typed, not the
+    // address-based cast: Visual Studio saves and re-evaluates a Watch entry by FullName, and an address is stale after the next run.
+    private void LookupMapEntry(
+        DkmInspectionContext inspectionContext,
+        DkmWorkList workList,
+        DkmLanguageExpression original,
+        DkmStackWalkFrame stackFrame,
+        MapProbe probe,
+        DkmSuccessEvaluationResult mapResult,
+        DkmCompletionRoutine<DkmEvaluateExpressionAsyncResult> completionRoutine)
+    {
+        bool answered = false;
+        void Answer(DkmEvaluateExpressionAsyncResult answer)
+        {
+            if (!answered)
+            {
+                answered = true;
+                CloseProbe(probe);
+                completionRoutine(answer);
+            }
+        }
+
+        void Fail(string message)
+        {
+            DebuggerLog.Write($"map lookup '{original.Text}': {message}");
+            Answer(Failed(inspectionContext, stackFrame, original.Text, message));
+        }
+
+        try
+        {
+            if (!TryParseMapType(mapResult.Type ?? string.Empty, out string keyType, out string valueType))
+            {
+                Fail("not a map");
+                return;
+            }
+
+            DkmSuccessEvaluationResult? dataValue = probe.Values[MapProbe.DataValue];
+            DkmSuccessEvaluationResult? keySizeValue = probe.Values[MapProbe.KeySizeValue];
+            DkmSuccessEvaluationResult? valueSizeValue = probe.Values[MapProbe.ValueSizeValue];
+            if (dataValue is null || keySizeValue is null || valueSizeValue is null)
+            {
+                Fail($"the header of {probe.Shape.Base} could not be read");
+                return;
+            }
+
+            ulong keySize = ParseUnsigned(keySizeValue.Value);
+            ulong valueSize = ParseUnsigned(valueSizeValue.Value);
+            OdinMapLayout.MapArrays arrays = OdinMapLayout.Arrays(ParseUnsigned(dataValue.Value), keySize, valueSize);
+            if (arrays.Capacity == 0)
+            {
+                Fail($"key {probe.Shape.Index} not found: {probe.Shape.Base} is empty");
+                return;
+            }
+
+            if (arrays.Capacity > MaxMapCapacity || keySize == 0 || arrays.Values - arrays.Keys > (ulong)MaxLookupBytes)
+            {
+                Fail($"{probe.Shape.Base} is too large to search (capacity {arrays.Capacity}, key size {keySize})");
+                return;
+            }
+
+            string keyC = ToCType(keyType);
+            string valueC = ToCType(valueType);
+            DkmProcess process = inspectionContext.RuntimeInstance.Process;
+            bool isString = keyC == OdinStringType;
+            byte[]? target = SearchKey(process, probe, keyC, keySize, isString, out string? keyProblem);
+            if (target is null)
+            {
+                Fail(keyProblem ?? "the key could not be read");
+                return;
+            }
+
+            System.Diagnostics.Stopwatch timer = System.Diagnostics.Stopwatch.StartNew();
+            ulong? slot = FindSlot(process, arrays, keySize, isString, target, out int used, out int comparisons, out string? scanProblem);
+            DebuggerLog.Write($"map lookup '{original.Text}': {used} used slots, {comparisons} string reads, {(slot is null ? "not found" : $"slot {slot}")}, {timer.ElapsedMilliseconds} ms");
+            if (slot is null)
+            {
+                Fail(scanProblem ?? $"key {probe.Shape.Index} not found in {probe.Shape.Base} ({used} entries)");
+                return;
+            }
+
+            if (valueSize == 0)
+            {
+                // The set idiom `map[K]struct{}`: the key being there is the whole answer.
+                Answer(new DkmEvaluateExpressionAsyncResult(DkmSuccessEvaluationResult.Create(
+                    inspectionContext,
+                    stackFrame,
+                    original.Text,
+                    original.Text,
+                    DkmEvaluationResultFlags.ReadOnly,
+                    "{}",
+                    null,
+                    "struct{}",
+                    DkmEvaluationResultCategory.Data,
+                    DkmEvaluationResultAccessType.None,
+                    DkmEvaluationResultStorageType.None,
+                    DkmEvaluationResultTypeModifierFlags.None,
+                    null,
+                    null,
+                    null,
+                    null)));
+                return;
+            }
+
+            ulong valueAddress = arrays.Values + OdinMapLayout.ElementOffset(slot.Value, valueSize);
+            string rest = probe.Shape.Rest;
+            string[] expressions = [.. CastVariants(valueC, valueAddress).Select(v => rest.Length == 0 ? v : $"({v}){rest}")];
+            EvalBatch(inspectionContext, workList, stackFrame, expressions, values =>
+            {
+                try
+                {
+                    DkmSuccessEvaluationResult? value = null;
+                    foreach (DkmSuccessEvaluationResult? candidate in values)
+                    {
+                        if (value is null)
+                        {
+                            value = candidate;
+                        }
+                        else
+                        {
+                            CloseResult(candidate);
+                        }
+                    }
+
+                    if (value is null)
+                    {
+                        Fail($"the value of {original.Text} could not be read ({Describe(null)})");
+                        return;
+                    }
+
+                    // A string value is read from memory (no further evaluation: this is already two levels deep).
+                    DkmEvaluationResult transformed = valueC == OdinStringType && rest.Length == 0
+                        && ReadStringHeader(process, valueAddress) is string valueText
+                            ? ShowString(value, valueText)
+                            : Transform(value);
+                    DkmSuccessEvaluationResult shown = transformed as DkmSuccessEvaluationResult ?? value;
+                    DebuggerLog.Write($"map lookup '{original.Text}': value type {valueC}, shown as {(ReferenceEquals(shown, value) ? "native" : "decoded")}: {shown.Value}");
+                    Answer(new DkmEvaluateExpressionAsyncResult(DkmSuccessEvaluationResult.Create(
+                        inspectionContext,
+                        stackFrame,
+                        original.Text,
+                        original.Text,
+                        shown.Flags,
+                        shown.Value,
+                        shown.EditableValue,
+                        shown.Type,
+                        shown.Category,
+                        shown.Access,
+                        shown.StorageType,
+                        shown.TypeModifierFlags,
+                        shown.Address,
+                        shown.CustomUIVisualizers,
+                        shown.ExternalModules,
+                        new RetypeData(shown))));
+                }
+                catch (Exception ex)
+                {
+                    DebuggerLog.Write($"map lookup '{original.Text}' failed building the result: {ex}");
+                    Fail($"the value of {original.Text} could not be shown: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            DebuggerLog.Write($"map lookup '{original.Text}' failed: {ex}");
+            Fail($"the lookup failed: {ex.Message} (see odinvs-debugger.log)");
+        }
+    }
+
+    // The bytes a stored key must have to equal the typed one: the text of a string (a literal, or a string variable read from
+    // memory), the number for keys of at most eight bytes, else the raw bytes of a variable of the key's type.
+    private static byte[]? SearchKey(DkmProcess process, MapProbe probe, string keyC, ulong keySize, bool isString, out string? problem)
+    {
+        problem = null;
+        DkmSuccessEvaluationResult? number = probe.Values[MapProbe.IndexNumber];
+        if (isString)
+        {
+            if (OdinWatchExpressions.TryParseStringLiteral(probe.Shape.Index, out byte[] literal))
+            {
+                return literal;
+            }
+
+            ulong address = AddressOf(probe);
+            if (address != 0)
+            {
+                byte[] header = new byte[16];
+                process.ReadMemory(address, DkmReadMemoryFlags.None, header);
+                ulong data = BitConverter.ToUInt64(header, 0);
+                long length = BitConverter.ToInt64(header, 8);
+                if (length is >= 0 and <= MaxLookupBytes && (data != 0 || length == 0))
+                {
+                    byte[] text = new byte[length];
+                    if (length > 0)
+                    {
+                        process.ReadMemory(data, DkmReadMemoryFlags.None, text);
+                    }
+
+                    return text;
+                }
+            }
+
+            problem = $"the key {probe.Shape.Index} must be a string literal or a string variable";
+            return null;
+        }
+
+        bool floating = keyC is "float" or "double";
+        if (!floating && keySize <= 8 && number is not null && TryParseSigned(number.Value, out long numeric))
+        {
+            return OdinWatchExpressions.LittleEndian(numeric, (int)keySize);
+        }
+
+        ulong variable = AddressOf(probe);
+        if (variable != 0 && keySize <= MaxLookupBytes)
+        {
+            byte[] raw = new byte[keySize];
+            process.ReadMemory(variable, DkmReadMemoryFlags.None, raw);
+            return raw;
+        }
+
+        problem = $"the key {probe.Shape.Index} must be a number, or a variable of the key type {keyC}";
+        return null;
+    }
+
+    private static bool BytesEqual(byte[] buffer, int offset, byte[] expected)
+    {
+        for (int i = 0; i < expected.Length; i++)
+        {
+            if (buffer[offset + i] != expected[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Address of the typed key when it is a variable (the `&(index)` probe), else 0.
+    private static ulong AddressOf(MapProbe probe)
+    {
+        DkmSuccessEvaluationResult? address = probe.Values[MapProbe.IndexAddress];
+        return address is not null && TryParseSigned(address.Value, out long value) ? (ulong)value : 0;
+    }
+
+    // Slot of the used entry whose key equals `target`, or null. String keys are compared by length first and their text is
+    // read only for equal lengths, at most MaxStringKeyReads times.
+    private static ulong? FindSlot(DkmProcess process, OdinMapLayout.MapArrays arrays, ulong keySize, bool isString, byte[] target, out int used, out int comparisons, out string? problem)
+    {
+        problem = null;
+        used = 0;
+        comparisons = 0;
+        byte[] hashBytes = new byte[arrays.Capacity * 8];
+        process.ReadMemory(arrays.Hashes, DkmReadMemoryFlags.None, hashBytes);
+        byte[] keyBytes = new byte[arrays.Values - arrays.Keys];
+        process.ReadMemory(arrays.Keys, DkmReadMemoryFlags.None, keyBytes);
+        ulong? found = null;
+        for (ulong i = 0; i < arrays.Capacity; i++)
+        {
+            if (!OdinMapLayout.IsUsedHash(BitConverter.ToUInt64(hashBytes, (int)(i * 8))))
+            {
+                continue;
+            }
+
+            used++;
+            if (found is not null)
+            {
+                continue;
+            }
+
+            int offset = (int)OdinMapLayout.ElementOffset(i, keySize);
+            if (!isString)
+            {
+                if ((ulong)target.Length == keySize && BytesEqual(keyBytes, offset, target))
+                {
+                    found = i;
+                }
+
+                continue;
+            }
+
+            if (BitConverter.ToInt64(keyBytes, offset + 8) != target.Length)
+            {
+                continue;
+            }
+
+            if (target.Length == 0)
+            {
+                found = i;
+                continue;
+            }
+
+            if (comparisons >= MaxStringKeyReads)
+            {
+                problem = $"the search stopped after {MaxStringKeyReads} string comparisons without finding the key";
+                continue;
+            }
+
+            comparisons++;
+            try
+            {
+                byte[] stored = new byte[target.Length];
+                process.ReadMemory(BitConverter.ToUInt64(keyBytes, offset), DkmReadMemoryFlags.None, stored);
+                if (BytesEqual(stored, 0, target))
+                {
+                    found = i;
+                }
+            }
+            catch (Exception ex)
+            {
+                // A key whose text cannot be read (a dangling pointer) is skipped; the other keys are still searched.
+                if (Interlocked.Increment(ref m_FailureLogCount) <= LoggedFailureLimit)
+                {
+                    DebuggerLog.Write($"map lookup: the text of the key in slot {i} could not be read: {ex.Message} (further failures are not logged)");
+                }
+            }
+        }
+
+        if (found is not null)
+        {
+            problem = null;
+        }
+
+        return found;
     }
 
     // Results that are not handed back to Visual Studio (failed or unused attempts) are closed so the debugger can release them.
