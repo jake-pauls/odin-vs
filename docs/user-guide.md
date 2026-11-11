@@ -158,6 +158,27 @@ Not covered: `any`, `Small_Array`, `#soa` arrays and `Maybe` of a pointer (it ha
 Limits: a map key expression cannot itself contain a map lookup (`m[n["a"]]`). A number that does not fit the key type (`m[300]` on a `map[u8]V`) is reported, not wrapped around. Struct keys are compared byte for byte, padding included. An index with side effects (`a[i++]`, a call) is evaluated as typed and not range-checked. `len(a) + len(b)` and `len` inside an index (`m[len(k)]`) work. A map is searched entry by entry in the debuggee's memory: fine for tens of thousands of entries, and the search stops after 200,000 string comparisons or on a map over a million slots, saying so. Type names from other packages work (`shapes.Point`). `x[i]` on a `[^]T` is C-style and not range-checked, because the pointer has no length.
 
 If a display looks wrong, Visual Studio shows the native `{data, len}` value instead, and `%LOCALAPPDATA%\OdinVS\odinvs-debugger.log` says why (it rotates at 1 MB). If the component fails to load after a Visual Studio update, strings and slices fall back to that native display.
+
+**What does not work yet** (known gaps, collected for a later debugger task in [milestones.md](milestones.md), "Debugger gaps for a later task")
+
+| Where | What happens |
+|---|---|
+| Autos window | Empty for `.odin` files, with or without the component (Visual Studio has no Odin language service to fill it) |
+| Raw View | The displayed containers have no Raw View child to see the native fields; use `x.data` and `x.len` in Watch |
+| `any`, `Small_Array`, `#soa` arrays, `Maybe` of a pointer | Shown natively (for `Maybe` of a pointer as `{v0=...}`) |
+| `[^]T` | Plain pointer; `x[i]` works but is not range-checked, and there is no element list |
+| `int` against `i64` | The debug symbols cannot tell them apart, so `int` is a best guess |
+| Two map types with one debug-info name (for example `map[int]int` next to `map[int][dynamic]int`) | `m[key]` and the entry list report "cannot be searched" or "the layout does not fit" instead of a value, and which of the two fails can change between runs; open the other one in Locals |
+| `m[key]` where the value is a union or matrix | Shown natively |
+| `m[key][i]` and `m[key].cap` on a slice, dynamic array or map value | Implemented but not checked in Visual Studio yet |
+| A lookup inside a lookup (`nested_map["outer"]["x"]`) and a key that contains a lookup (`m[n["a"]]`) | Error saying it is not supported |
+| A slice or dynamic array whose element type has no nameable spelling (for example one holding a slice) | The value and length show, the elements are not listed |
+| Map keys that are padded structs, or `[N]T` arrays of 8 bytes or less | Not tried; may report a mismatch |
+| Maps of more than 1000 entries | Only the first 1000 are listed (`[shown]` row); `m[key]` still finds any entry |
+| 32-bit Odin programs | Not tried |
+| Package-level variables | Only reachable in Watch, and only when the compiler emitted a symbol |
+| An index that has side effects (`a[i++]`, a call) | Evaluated as typed, no range check |
+
 ## Diagnostics
 
 Build output uses MSBuild's canonical format, so Visual Studio shows entries in the Error List and double-click navigates to the line:
