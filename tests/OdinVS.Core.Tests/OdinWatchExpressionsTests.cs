@@ -230,6 +230,66 @@ public sealed class OdinWatchExpressionsTests
     }
 
     [TestMethod]
+    [DataRow("len(a)", "a.len")]
+    [DataRow("cap(a)", "a.cap")]
+    [DataRow("len(a) + len(b)", "a.len + b.len")]
+    [DataRow("  len( a )  ", "  a.len  ")]
+    [DataRow("len(things[0].tags)", "things[0].tags.len")]
+    [DataRow("len(a + b)", "(a + b).len")]
+    [DataRow("len(m[len(k)])", "m[k.len].len")]
+    [DataRow("len(a) * cap(b) - 1", "a.len * b.cap - 1")]
+    [DataRow("strlen(a)", "strlen(a)")]
+    [DataRow("a.len(x)", "a.len(x)")]
+    [DataRow("length(a)", "length(a)")]
+    [DataRow("len(a", "len(a")]
+    [DataRow("len()", "len()")]
+    [DataRow("plain + 1", "plain + 1")]
+    [DataRow("len(\"a)b\")", "(\"a)b\").len")]
+    public void BuiltinsAreRewrittenAnywhereInTheText(string text, string expected)
+    {
+        Assert.AreEqual(expected, OdinWatchExpressions.RewriteBuiltins(text));
+    }
+
+    [TestMethod]
+    public void VariantsStartWithTheTextAsTypedAndOnlyRewriteTheTail()
+    {
+        IReadOnlyList<OdinWatchExpressions.IndexRewrite> variants = OdinWatchExpressions.Variants("(*([]int*)0x10)", ".a[1].b[2]", 4);
+        Assert.HasCount(4, variants);
+        Assert.AreEqual("(*([]int*)0x10).a[1].b[2]", variants[0].Text);
+        Assert.IsEmpty(variants[0].Checks);
+        Assert.AreEqual("(*([]int*)0x10).a.data[1].b[2]", variants[1].Text);
+        Assert.AreEqual("(*([]int*)0x10).a", variants[1].Checks[0].Base, "the base of the first inserted index includes the prefix");
+        Assert.AreEqual("(*([]int*)0x10).a[1].b.data[2]", variants[2].Text);
+        Assert.AreEqual("(*([]int*)0x10).a.data[1].b.data[2]", variants[3].Text);
+        Assert.AreEqual("(*([]int*)0x10).a.data[1].b", variants[3].Checks[1].Base);
+    }
+
+    [TestMethod]
+    public void VariantsOfAnIndexExpressionWithoutBracketsIsOnlyTheText()
+    {
+        IReadOnlyList<OdinWatchExpressions.IndexRewrite> variants = OdinWatchExpressions.Variants(string.Empty, "key + 1", 4);
+        Assert.HasCount(1, variants);
+        Assert.AreEqual("key + 1", variants[0].Text);
+    }
+
+    [TestMethod]
+    public void VariantsOfAKeyWithAnIndexRewriteThatIndex()
+    {
+        IReadOnlyList<OdinWatchExpressions.IndexRewrite> variants = OdinWatchExpressions.Variants(string.Empty, "names[1]", 4);
+        Assert.HasCount(2, variants);
+        Assert.AreEqual("names.data[1]", variants[1].Text);
+        Assert.AreEqual("names", variants[1].Checks[0].Base);
+        Assert.AreEqual("1", variants[1].Checks[0].Index);
+    }
+
+    [TestMethod]
+    public void BracketsInsideStringLiteralsAreNotIndexes()
+    {
+        CollectionAssert.AreEqual(new[] { 8 }, OdinWatchExpressions.FindBrackets("\"[[\" + a[0]", 4).ToArray());
+        CollectionAssert.AreEqual(new[] { 15 }, OdinWatchExpressions.FindBrackets("x == \"a\\\"[\" + a[0]", 4).ToArray());
+    }
+
+    [TestMethod]
     public void LittleEndianKeepsTheLowBytes()
     {
         CollectionAssert.AreEqual(new byte[] { 5, 0, 0, 0 }, OdinWatchExpressions.LittleEndian(5, 4));

@@ -16,18 +16,145 @@ public static class OdinWatchExpressions
     // `name[key]rest`: `Base` is a plain (bracket-free) member chain, `Index` the text between the first bracket pair, `Rest` what follows.
     public sealed record MapLookupShape(string Base, string Index, string Rest);
 
+    // Positions of the first `maximum` `[` in `text`, not counting brackets inside string literals.
     public static IReadOnlyList<int> FindBrackets(string text, int maximum)
     {
         List<int> brackets = [];
+        bool inString = false;
         for (int i = 0; i < text.Length && brackets.Count < maximum; i++)
         {
-            if (text[i] == '[')
+            if (inString)
+            {
+                if (text[i] == '\\')
+                {
+                    i++;
+                }
+                else if (text[i] == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (text[i] == '"')
+            {
+                inString = true;
+            }
+            else if (text[i] == '[')
             {
                 brackets.Add(i);
             }
         }
 
         return brackets;
+    }
+
+    // `prefix + tail`, as typed and then with `.data` inserted before each non-empty subset of the brackets of `tail` (the prefix is
+    // never touched: it is an evaluator-built cast), fewest insertions first. The first entry is the text unchanged. Used for the
+    // text after a map lookup and for a map key that contains indexes.
+    public static IReadOnlyList<IndexRewrite> Variants(string prefix, string tail, int maxBrackets)
+    {
+        string full = prefix + tail;
+        List<int> brackets = [.. FindBrackets(tail, maxBrackets).Select(b => b + prefix.Length)];
+        List<IndexRewrite> variants = [new IndexRewrite(full, [])];
+        foreach (int mask in SubsetOrder(brackets.Count))
+        {
+            variants.Add(Rewrite(full, brackets, mask));
+        }
+
+        return variants;
+    }
+
+    // `len(x)` and `cap(x)` anywhere in the text become `x.len` and `x.cap` (Odin's builtins are members in the debug info); the
+    // argument is parenthesised unless it is already one postfix expression. Each call is rewritten by balanced parentheses, so
+    // `len(a) + len(b)` and `len(m[len(k)])` work. `strlen(x)` and `a.len(x)` are not builtins and are left alone.
+    public static string RewriteBuiltins(string text)
+    {
+        StringBuilder result = new();
+        int i = 0;
+        while (i < text.Length)
+        {
+            int nameLength = BuiltinNameLength(text, i);
+            if (nameLength > 0)
+            {
+                int open = i + nameLength;
+                while (open < text.Length && text[open] == ' ')
+                {
+                    open++;
+                }
+
+                int close = open < text.Length && text[open] == '(' ? MatchingParenthesis(text, open) : -1;
+                if (close > 0)
+                {
+                    string argument = RewriteBuiltins(text.Substring(open + 1, close - open - 1)).Trim();
+                    if (argument.Length > 0)
+                    {
+                        result.Append(BaseStart(argument, argument.Length) == 0 ? argument : "(" + argument + ")");
+                        result.Append('.').Append(text, i, 3);
+                        i = close + 1;
+                        continue;
+                    }
+                }
+            }
+
+            result.Append(text[i]);
+            i++;
+        }
+
+        return result.ToString();
+    }
+
+    private static int BuiltinNameLength(string text, int at)
+    {
+        if (at + 3 > text.Length || !(string.CompareOrdinal(text, at, "len", 0, 3) == 0 || string.CompareOrdinal(text, at, "cap", 0, 3) == 0))
+        {
+            return 0;
+        }
+
+        char before = at > 0 ? text[at - 1] : ' ';
+        return char.IsLetterOrDigit(before) || before is '_' or '.' ? 0 : 3;
+    }
+
+    private static int MatchingParenthesis(string text, int open)
+    {
+        int depth = 0;
+        bool inString = false;
+        for (int i = open; i < text.Length; i++)
+        {
+            if (inString)
+            {
+                if (text[i] == '\\')
+                {
+                    i++;
+                }
+                else if (text[i] == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (text[i] == '"')
+            {
+                inString = true;
+            }
+            else if (text[i] == '(')
+            {
+                depth++;
+            }
+            else if (text[i] == ')')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return i;
+                }
+            }
+        }
+
+        return -1;
     }
 
     // Inserts `.data` before the brackets selected by `mask` (bit b is the b-th entry of `brackets`).

@@ -36,7 +36,6 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     private static readonly Regex m_FixedType = new(@"^(?<base>[^\[\]]+)\[(?<n>\d+)\]$", RegexOptions.Compiled);
     private static readonly Regex m_LenCap = new(@"len=(?<len>0x[0-9a-fA-F]+|\d+) cap=(?<cap>0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled | RegexOptions.RightToLeft);
     private static readonly Regex m_Len = new(@"len=(?<len>0x[0-9a-fA-F]+|\d+)", RegexOptions.Compiled | RegexOptions.RightToLeft);
-    private static readonly Regex m_Builtin = new(@"^\s*(?<fn>len|cap)\((?<arg>.+)\)\s*$", RegexOptions.Compiled);
 
     // CodeView built-ins the Odin PDB uses for Odin scalars; the first Odin name that maps to each is the guess.
     private static readonly Dictionary<string, string> m_ScalarNames = new()
@@ -160,12 +159,11 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             return;
         }
 
-        string text = expression.Text;
-        Match builtin = m_Builtin.Match(text);
+        // `len(x)` and `cap(x)` anywhere in the text become `x.len` and `x.cap` before anything is evaluated.
+        string text = OdinWatchExpressions.RewriteBuiltins(expression.Text);
         DkmLanguageExpression first = expression;
-        if (builtin.Success)
+        if (text != expression.Text)
         {
-            text = $"{builtin.Groups["arg"].Value.Trim()}.{builtin.Groups["fn"].Value}";
             first = DkmLanguageExpression.Create(expression.Language, expression.CompilationFlags, text, null);
         }
 
@@ -175,15 +173,18 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     // Evaluates `first`. If the C evaluator rejects it and the text has `[`, Odin indexing is tried by inserting `.data`
     // before some of the brackets (Odin indexes the slice, C indexes a pointer). Which brackets belong to slices is not
     // known without types, so every subset is tried (at most 2^MaxIndexRewrites) in ONE flat batch issued from the first
-    // failure's callback, and the first success in subset order wins. Each attempt comes with a bounds condition
-    // (`i >= 0 && i < a.len`) in the same batch, so an index outside the container is an error instead of memory past its end.
+    // failure's callback, and the first success in subset order wins. Each attempt comes with, in the same batch, the index
+    // and the container's `len` of every inserted `.data` (an index outside the container is an error instead of memory past
+    // its end) and, unless the text has side effects, the attempt's `len`, `cap` and address, which is what a string, slice,
+    // dynamic array or map result needs to be shown decoded (a deeper evaluation to get them is not allowed).
     // Chaining the retries (each started from the previous one's callback) hung at the third level (`things[0].tags[1]`); a
     // thread-pool workaround crashed devenv or hung too, so nothing here nests deeper than two calls and no thread is created.
     // Attempts carry RetryMarker so they are not rewritten again.
     //
     // `name[key]` on a map is looked up in the debuggee's memory (LookupMapEntry). The map's type, header and the key are
     // not known before `first` fails, and a third level is not allowed, so for text of that shape the probes are issued
-    // together with `first` (still one flat level) and used only if `first` fails.
+    // together with `first` (still one flat level) and used only if `first` fails. A key that contains indexes is probed in
+    // every `.data` variant too (Variants), so `m[names[1]]` finds the key the same way `names[1]` would be evaluated.
     private void EvaluateWithRewrites(
         DkmInspectionContext inspectionContext,
         DkmWorkList workList,
@@ -194,31 +195,22 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         DkmCompletionRoutine<DkmEvaluateExpressionAsyncResult> completionRoutine)
     {
         OdinWatchExpressions.MapLookupShape? shape = OdinWatchExpressions.SplitLookup(firstText);
-        // An index with side effects (`i++`, a call) would be evaluated again by every probe, so such text is not probed.
-        if (shape is null || OdinWatchExpressions.HasSideEffects(shape.Index))
+        // Text with side effects (an assignment, `i++`, a call) would be evaluated again by every probe, so it is not probed.
+        if (shape is null || OdinWatchExpressions.HasSideEffects(firstText))
         {
             inspectionContext.EvaluateExpression(workList, first, stackFrame, firstResult =>
                 ContinueAfterFirst(inspectionContext, workList, original, firstText, stackFrame, firstResult, null, completionRoutine));
             return;
         }
 
-        string[] probeExpressions =
-        [
-            shape.Base,
-            $"{shape.Base}.data",
-            $"sizeof({shape.Base}.data->key)",
-            $"sizeof({shape.Base}.data->value)",
-            $"(__int64)({shape.Index})",
-            $"(unsigned __int64)&({shape.Index})",
-        ];
+        MapProbe probe = new(shape, OdinWatchExpressions.Variants(string.Empty, shape.Index, MaxIndexRewrites));
         DkmEvaluateExpressionAsyncResult? firstOutcome = null;
-        DkmSuccessEvaluationResult?[]? probeValues = null;
         int remaining = 2;
         void OneDone()
         {
             if (Interlocked.Decrement(ref remaining) == 0)
             {
-                ContinueAfterFirst(inspectionContext, workList, original, firstText, stackFrame, firstOutcome!.Value, new MapProbe(shape, probeValues!), completionRoutine);
+                ContinueAfterFirst(inspectionContext, workList, original, firstText, stackFrame, firstOutcome!.Value, probe, completionRoutine);
             }
         }
 
@@ -227,9 +219,9 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             firstOutcome = firstResult;
             OneDone();
         });
-        EvalBatch(inspectionContext, workList, stackFrame, probeExpressions, values =>
+        EvalBatch(inspectionContext, workList, stackFrame, probe.Expressions, values =>
         {
-            probeValues = values;
+            probe.Values = values;
             OneDone();
         });
     }
@@ -295,7 +287,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             return;
         }
 
-        if (probe?.Values[MapProbe.BaseValue] is DkmSuccessEvaluationResult mapResult && mapResult.Type is not null && TryParseMapType(mapResult.Type, out _, out _))
+        if (probe is not null && probe.Values[MapProbe.BaseValue] is DkmSuccessEvaluationResult mapResult && mapResult.Type is not null && TryParseMapType(mapResult.Type, out _, out _))
         {
             LookupMapEntry(inspectionContext, workList, original, stackFrame, probe, mapResult, completionRoutine);
             return;
@@ -310,14 +302,13 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         }
 
         IReadOnlyList<int> masks = OdinWatchExpressions.SubsetOrder(brackets.Count);
-
         OdinWatchExpressions.IndexRewrite[] rewrites = [.. masks.Select(m => OdinWatchExpressions.Rewrite(firstText, brackets, m))];
-        DkmEvaluateExpressionAsyncResult?[] results = new DkmEvaluateExpressionAsyncResult?[masks.Count];
-        // Per attempt and per inserted index: the index as a number and the container's `len`, for the bounds check and its message.
-        DkmEvaluateExpressionAsyncResult?[][] bounds = [.. rewrites.Select(r => new DkmEvaluateExpressionAsyncResult?[r.Checks.Count * 2])];
-        int pending = masks.Count + bounds.Sum(b => b.Length);
+        // Per attempt, the cells of AddCandidate: the attempt, its len/cap/address, and the index and `len` of each inserted index.
+        bool extras = !OdinWatchExpressions.HasSideEffects(firstText);
+        DkmEvaluateExpressionAsyncResult?[][] cells = [.. rewrites.Select(r => new DkmEvaluateExpressionAsyncResult?[CandidateLength(r, extras)])];
+        int pending = cells.Sum(c => c.Length);
 
-        void OneAttemptDone()
+        void OneCellDone()
         {
             if (Interlocked.Decrement(ref pending) != 0)
             {
@@ -338,25 +329,46 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         void ChooseAttempt()
         {
             int chosen = -1;
-            for (int i = 0; i < results.Length && chosen < 0; i++)
+            for (int i = 0; i < cells.Length && chosen < 0; i++)
             {
-                if (!IsFailure(results[i]!.Value))
+                if (!IsFailure(cells[i][0]!.Value))
                 {
                     chosen = i;
                 }
             }
 
-            string? problem = chosen >= 0 ? BoundsProblem(rewrites[chosen], bounds[chosen], original.Text) : null;
-            for (int i = 0; i < results.Length; i++)
+            string? problem = null;
+            Dictionary<DkmEvaluationResult, long[]> headers = new();
+            Dictionary<DkmEvaluationResult, string> strings = new();
+            DkmEvaluationResult? chosenResult = chosen >= 0 ? cells[chosen][0]!.Value.ResultObject : null;
+            if (chosen >= 0)
             {
-                foreach (DkmEvaluateExpressionAsyncResult? measured in bounds[i])
+                int measureStart = 1 + (extras ? ExtraCount : 0);
+                long?[] measures = [.. Enumerable.Range(0, rewrites[chosen].Checks.Count * 2).Select(t => NumberOf(cells[chosen][measureStart + t]))];
+                problem = BoundsProblem(rewrites[chosen], measures, original.Text);
+                if (problem is null && extras && chosenResult is DkmSuccessEvaluationResult chosenSuccess)
                 {
-                    CloseResult(measured?.ResultObject);
+                    CollectHeaders(
+                        chosenSuccess,
+                        SuccessOf(cells[chosen][1]),
+                        SuccessOf(cells[chosen][2]),
+                        SuccessOf(cells[chosen][3]),
+                        inspectionContext.RuntimeInstance.Process,
+                        headers,
+                        strings);
                 }
+            }
 
-                if (i != chosen || problem is not null)
+            for (int i = 0; i < cells.Length; i++)
+            {
+                for (int j = 0; j < cells[i].Length; j++)
                 {
-                    CloseResult(results[i]!.Value.ResultObject);
+                    if (i == chosen && j == 0 && problem is null)
+                    {
+                        continue;
+                    }
+
+                    CloseResult(cells[i][j]?.ResultObject);
                 }
             }
 
@@ -367,57 +379,122 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 return;
             }
 
-            if (chosen >= 0)
+            if (chosenResult is not null)
             {
                 DebuggerLog.Write($"expression '{original.Text}' evaluated as '{rewrites[chosen].Text}'");
-                // Already two calls deep: no further evaluation here (see above), so a cut-off header is not resolved.
-                completionRoutine(new DkmEvaluateExpressionAsyncResult(Transform(results[chosen]!.Value.ResultObject!)));
+                completionRoutine(new DkmEvaluateExpressionAsyncResult(Transform(chosenResult, headers, null, null, strings)));
                 return;
             }
 
             completionRoutine(firstResult);
         }
 
-        for (int k = 0; k < masks.Count; k++)
+        for (int k = 0; k < rewrites.Length; k++)
         {
-            int slot = k;
-            DkmLanguageExpression attempt = DkmLanguageExpression.Create(original.Language, original.CompilationFlags, rewrites[slot].Text, new RetryMarker());
-            inspectionContext.EvaluateExpression(workList, attempt, stackFrame, result =>
+            int attemptSlot = k;
+            List<string> texts = [];
+            AddCandidate(texts, rewrites[k], extras);
+            for (int j = 0; j < texts.Count; j++)
             {
-                results[slot] = result;
-                OneAttemptDone();
-            });
-            for (int c = 0; c < rewrites[slot].Checks.Count; c++)
-            {
-                OdinWatchExpressions.IndexCheck check = rewrites[slot].Checks[c];
-                string[] measures = [$"(__int64)({check.Index})", $"{check.Base}.len"];
-                for (int m = 0; m < 2; m++)
+                int cell = j;
+                DkmLanguageExpression expression = DkmLanguageExpression.Create(original.Language, original.CompilationFlags, texts[j], new RetryMarker());
+                inspectionContext.EvaluateExpression(workList, expression, stackFrame, result =>
                 {
-                    int measureSlot = c * 2 + m;
-                    DkmLanguageExpression measure = DkmLanguageExpression.Create(original.Language, original.CompilationFlags, measures[m], new RetryMarker());
-                    inspectionContext.EvaluateExpression(workList, measure, stackFrame, result =>
-                    {
-                        bounds[slot][measureSlot] = result;
-                        OneAttemptDone();
-                    });
-                }
+                    cells[attemptSlot][cell] = result;
+                    OneCellDone();
+                });
             }
         }
     }
 
+    // How many expressions AddCandidate adds for one candidate.
+    private const int ExtraCount = 3;
+
+    private static int CandidateLength(OdinWatchExpressions.IndexRewrite candidate, bool extras)
+    {
+        return 1 + (extras ? ExtraCount : 0) + candidate.Checks.Count * 2;
+    }
+
+    // The expressions that go into one flat batch for a candidate text: the text itself; optionally its `len`, `cap` and address
+    // (CollectHeaders turns them into what Transform needs, with no deeper evaluation); and, for every index that got a `.data`,
+    // the index as a number and the container's `len` (BoundsProblem).
+    private static void AddCandidate(List<string> expressions, OdinWatchExpressions.IndexRewrite candidate, bool extras)
+    {
+        expressions.Add(candidate.Text);
+        if (extras)
+        {
+            expressions.Add($"({candidate.Text}).len");
+            expressions.Add($"({candidate.Text}).cap");
+            expressions.Add($"(unsigned __int64)&({candidate.Text})");
+        }
+
+        foreach (OdinWatchExpressions.IndexCheck check in candidate.Checks)
+        {
+            expressions.Add($"(__int64)({check.Index})");
+            expressions.Add($"{check.Base}.len");
+        }
+    }
+
+    private static long? NumberOf(DkmSuccessEvaluationResult? result)
+    {
+        return result is not null && TryParseSigned(result.Value, out long value) ? value : null;
+    }
+
+    private static long? NumberOf(DkmEvaluateExpressionAsyncResult? result)
+    {
+        return NumberOf(SuccessOf(result));
+    }
+
+    private static DkmSuccessEvaluationResult? SuccessOf(DkmEvaluateExpressionAsyncResult? result)
+    {
+        return result is not null && !IsFailure(result.Value) ? result.Value.ResultObject as DkmSuccessEvaluationResult : null;
+    }
+
+    // What Transform needs for a result that was not evaluated by TransformAllAsync (a deeper evaluation is not allowed there):
+    // the text of an Odin string, read from the address the batch returned, and the length (and capacity) of a slice, dynamic
+    // array or map. Anything that does not parse leaves that result native.
+    private static void CollectHeaders(
+        DkmSuccessEvaluationResult result,
+        DkmSuccessEvaluationResult? length,
+        DkmSuccessEvaluationResult? capacity,
+        DkmSuccessEvaluationResult? address,
+        DkmProcess process,
+        Dictionary<DkmEvaluationResult, long[]> headers,
+        Dictionary<DkmEvaluationResult, string> strings)
+    {
+        string type = result.Type ?? string.Empty;
+        if (type == OdinStringType)
+        {
+            if (NumberOf(address) is long stringAddress and not 0 && ReadStringHeader(process, (ulong)stringAddress) is string text)
+            {
+                strings[result] = text;
+            }
+
+            return;
+        }
+
+        bool dynamic = m_DynamicType.IsMatch(type);
+        if (!(dynamic || m_SliceType.IsMatch(type) || TryParseMapType(type, out _, out _)))
+        {
+            return;
+        }
+
+        if (NumberOf(length) is not long count || (dynamic && NumberOf(capacity) is not long))
+        {
+            DebuggerLog.Write($"header of {result.FullName} is not a plain number, shown natively");
+            return;
+        }
+
+        headers[result] = [count, dynamic ? NumberOf(capacity)!.Value : -1];
+    }
+
     // Null when every index is inside its container, or when that cannot be told (no `.len`: not an Odin container, shown as evaluated).
-    private static string? BoundsProblem(OdinWatchExpressions.IndexRewrite rewrite, DkmEvaluateExpressionAsyncResult?[] measured, string text)
+    // `measured` holds, for each check in order, the index and the container's length.
+    private static string? BoundsProblem(OdinWatchExpressions.IndexRewrite rewrite, long?[] measured, string text, string? prefix = null, string? prefixDisplay = null)
     {
         for (int c = 0; c < rewrite.Checks.Count; c++)
         {
-            DkmEvaluateExpressionAsyncResult? indexResult = measured[c * 2];
-            DkmEvaluateExpressionAsyncResult? lengthResult = measured[c * 2 + 1];
-            if (indexResult is null || lengthResult is null
-                || IsFailure(indexResult.Value) || IsFailure(lengthResult.Value)
-                || indexResult.Value.ResultObject is not DkmSuccessEvaluationResult indexValue
-                || lengthResult.Value.ResultObject is not DkmSuccessEvaluationResult lengthValue
-                || !TryParseSigned(indexValue.Value, out long index)
-                || !TryParseSigned(lengthValue.Value, out long length))
+            if (measured[c * 2] is not long index || measured[c * 2 + 1] is not long length)
             {
                 DebuggerLog.Write($"bounds of {rewrite.Checks[c].Index} in {rewrite.Checks[c].Base} (in '{text}') could not be checked, shown without a check");
                 continue;
@@ -425,7 +502,9 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
             if (index < 0 || index >= length)
             {
-                return $"index {index} is out of bounds of {rewrite.Checks[c].Base} (length {length})";
+                // A lookup result's base starts with the evaluator-built cast (an address); the message names what was typed instead.
+                string baseName = prefix is not null && prefixDisplay is not null ? rewrite.Checks[c].Base.Replace(prefix, prefixDisplay) : rewrite.Checks[c].Base;
+                return $"index {index} is out of bounds of {baseName} (length {length})";
             }
         }
 
@@ -435,7 +514,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     private static string? FixedArrayProblem(MapProbe probe)
     {
         string? type = (probe.Values[MapProbe.BaseValue] as DkmSuccessEvaluationResult)?.Type;
-        if (type is null || probe.Values[MapProbe.IndexNumber] is not DkmSuccessEvaluationResult number || !TryParseSigned(number.Value, out long index))
+        if (type is null || probe.Number(0) is not long index)
         {
             return null;
         }
@@ -464,21 +543,89 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         }
     }
 
-    // What EvaluateWithRewrites learns about `Base[Index]` next to evaluating it: the evaluations of the map base, its `data`
-    // member, the key and value sizes (as GetMapChildren reads them), and the index as a number and as an address
-    // (a result of this kind of evaluation carries no Address of its own). Null where one failed.
-    private sealed class MapProbe(OdinWatchExpressions.MapLookupShape shape, DkmSuccessEvaluationResult?[] values)
+    // What EvaluateWithRewrites asks next to evaluating `Base[Index]rest`: the map base, its `data` member and the key and value
+    // sizes (as GetMapChildren reads them), then for each variant of the key text (as typed, then with `.data` inserted before
+    // some of its indexes) the key as a number, as an address, and the bounds measures of its inserted indexes. `Values` is
+    // filled when the batch is done (null where an evaluation failed).
+    private sealed class MapProbe
     {
-        public OdinWatchExpressions.MapLookupShape Shape { get; } = shape;
-
-        public DkmSuccessEvaluationResult?[] Values { get; } = values;
-
         public const int BaseValue = 0;
         public const int DataValue = 1;
         public const int KeySizeValue = 2;
         public const int ValueSizeValue = 3;
-        public const int IndexNumber = 4;
-        public const int IndexAddress = 5;
+        public const int KeyTypeValue = 4;
+        public const int ValueTypeValue = 5;
+        public const int LengthValue = 6;
+
+        private readonly int[] m_Starts;
+
+        public MapProbe(OdinWatchExpressions.MapLookupShape shape, IReadOnlyList<OdinWatchExpressions.IndexRewrite> keyVariants)
+        {
+            Shape = shape;
+            KeyVariants = keyVariants;
+            List<string> expressions =
+            [
+                shape.Base,
+                $"{shape.Base}.data",
+                $"sizeof({shape.Base}.data->key)",
+                $"sizeof({shape.Base}.data->value)",
+                // The member types, as the type of their address (`[dynamic]int *`): the map's own type name is not reliable for
+                // composite values (Odin spells `map[int][dynamic]int` as `map[int]int` in the debug info).
+                $"&({shape.Base}.data->key)",
+                $"&({shape.Base}.data->value)",
+                // The entry count, to tell a layout that does not fit this map (see LookupMapEntry) from a real one.
+                $"{shape.Base}.len",
+            ];
+            List<int> starts = [];
+            foreach (OdinWatchExpressions.IndexRewrite variant in keyVariants)
+            {
+                starts.Add(expressions.Count);
+                expressions.Add($"(__int64)({variant.Text})");
+                expressions.Add($"(unsigned __int64)&({variant.Text})");
+                foreach (OdinWatchExpressions.IndexCheck check in variant.Checks)
+                {
+                    expressions.Add($"(__int64)({check.Index})");
+                    expressions.Add($"{check.Base}.len");
+                }
+            }
+
+            Expressions = [.. expressions];
+            m_Starts = [.. starts];
+            Values = new DkmSuccessEvaluationResult?[Expressions.Length];
+        }
+
+        public OdinWatchExpressions.MapLookupShape Shape { get; }
+
+        public IReadOnlyList<OdinWatchExpressions.IndexRewrite> KeyVariants { get; }
+
+        public string[] Expressions { get; }
+
+        public DkmSuccessEvaluationResult?[] Values { get; set; }
+
+        public long? Number(int variant) => NumberOf(Values[m_Starts[variant]]);
+
+        // Address of the key when this variant is a variable (the `&(...)` probe), else 0.
+        public ulong Address(int variant) => NumberOf(Values[m_Starts[variant] + 1]) is long address ? (ulong)address : 0;
+
+        public long?[] Measures(int variant)
+        {
+            int count = KeyVariants[variant].Checks.Count * 2;
+            return [.. Enumerable.Range(0, count).Select(t => NumberOf(Values[m_Starts[variant] + 2 + t]))];
+        }
+    }
+
+    // The first variant of the key text that evaluated (as a number or as an address), or -1.
+    private static int ChooseKeyVariant(MapProbe probe)
+    {
+        for (int v = 0; v < probe.KeyVariants.Count; v++)
+        {
+            if (probe.Number(v) is not null || probe.Address(v) != 0)
+            {
+                return v;
+            }
+        }
+
+        return -1;
     }
 
     // Largest key text read from a string variable, and largest keys array searched; beyond them the lookup says so instead of
@@ -491,7 +638,12 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     // the used slots come from the hash array as when expanding a map, each key is compared with the typed one, and the
     // value of the slot found is evaluated with the same cast the map's children use. A missing key is an error (Odin would
     // give a zero value, which a debugger should not invent). The result's FullName is the text that was typed, not the
-    // address-based cast: Visual Studio saves and re-evaluates a Watch entry by FullName, and an address is stale after the next run.
+    // address-based cast: Visual Studio saves and re-evaluates a Watch entry by FullName, and an address is stale after the next
+    // run. The evaluable name (the cast) rides along as EvalName, which the children of a slice or map result use instead.
+    //
+    // Text after the lookup (`m[k].list[i]`) is evaluated on the value with the same `.data` variants and bounds checks as any
+    // Watch text, and the value's string text, length, capacity or address come in the same batch (AddCandidate), so strings,
+    // slices, dynamic arrays and maps are shown decoded whether they are the value or a field of it.
     private void LookupMapEntry(
         DkmInspectionContext inspectionContext,
         DkmWorkList workList,
@@ -526,6 +678,8 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 return;
             }
 
+            keyType = PointeeType(probe.Values[MapProbe.KeyTypeValue]) ?? keyType;
+            valueType = PointeeType(probe.Values[MapProbe.ValueTypeValue]) ?? valueType;
             DkmSuccessEvaluationResult? dataValue = probe.Values[MapProbe.DataValue];
             DkmSuccessEvaluationResult? keySizeValue = probe.Values[MapProbe.KeySizeValue];
             DkmSuccessEvaluationResult? valueSizeValue = probe.Values[MapProbe.ValueSizeValue];
@@ -550,11 +704,32 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 return;
             }
 
+            // A string literal is read from the typed text and needs no evaluation (the debugger has no address for it).
+            int variant = ChooseKeyVariant(probe);
+            if (variant < 0 && OdinWatchExpressions.TryParseStringLiteral(probe.Shape.Index, out _))
+            {
+                variant = 0;
+            }
+
+            if (variant < 0)
+            {
+                Fail($"the key {probe.Shape.Index} could not be evaluated");
+                return;
+            }
+
+            DebuggerLog.Write($"map lookup '{original.Text}': map type {mapResult.Type}, member types key {keyType} value {valueType}, sizes key {keySize} value {valueSize}, capacity {arrays.Capacity}");
+            string? keyBounds = BoundsProblem(probe.KeyVariants[variant], probe.Measures(variant), probe.Shape.Index);
+            if (keyBounds is not null)
+            {
+                Fail(keyBounds);
+                return;
+            }
+
             string keyC = ToCType(keyType);
             string valueC = ToCType(valueType);
             DkmProcess process = inspectionContext.RuntimeInstance.Process;
             bool isString = keyC == OdinStringType;
-            byte[]? target = SearchKey(process, probe, keyType, keyC, keySize, isString, out string? keyProblem);
+            byte[]? target = SearchKey(process, probe, variant, keyType, keyC, keySize, isString, out string? keyProblem);
             if (target is null)
             {
                 Fail(keyProblem ?? "the key could not be read");
@@ -564,6 +739,15 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             Stopwatch timer = Stopwatch.StartNew();
             OdinMapSearch.Outcome search = FindSlot(process, arrays, keySize, isString, target);
             ulong? slot = search.Slot;
+            // The map knows how many entries it holds. If the scan finds another number, the sizes used for the layout belong to
+            // a different map type: Odin's debug info can give two map types the same name (seen: `map[int]int` and
+            // `map[int][dynamic]int`), and which one the evaluator resolves varies from run to run. An error is better than garbage.
+            if (NumberOf(probe.Values[MapProbe.LengthValue]) is long entries && entries != search.Used)
+            {
+                Fail($"{probe.Shape.Base} cannot be searched: it holds {entries} entries but the layout from its debug info (key size {keySize}, value size {valueSize}) finds {search.Used}. Another map type has the same name ({mapResult.Type}) there.");
+                return;
+            }
+
             DebuggerLog.Write($"map lookup '{original.Text}': {search.Used} used slots, {search.TextReads} string reads, {search.Unreadable} unreadable, {(slot is null ? "not found" : $"slot {slot}")}, {timer.ElapsedMilliseconds} ms");
             if (slot is null)
             {
@@ -598,54 +782,248 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
 
             ulong valueAddress = arrays.Values + OdinMapLayout.ElementOffset(slot.Value, valueSize);
             string rest = probe.Shape.Rest;
-            string[] expressions = [.. CastVariants(valueC, valueAddress).Select(v => rest.Length == 0 ? v : $"({v}){rest}")];
-            EvalBatch(inspectionContext, workList, stackFrame, expressions, values =>
+            string display = $"{probe.Shape.Base}[{probe.Shape.Index}]";
+
+            // Gives the answer for an evaluated value. A decoded slice, dynamic array, map or matrix keeps its own data item (its
+            // children are built from it); anything else forwards to the result it was made from. The name is what was typed.
+            void Show(DkmSuccessEvaluationResult value, Dictionary<DkmEvaluationResult, long[]> headers, Dictionary<DkmEvaluationResult, string> strings)
+            {
+                DkmEvaluationResult transformed = Transform(value, headers, null, null, strings);
+                DkmSuccessEvaluationResult shown = transformed as DkmSuccessEvaluationResult ?? value;
+                DebuggerLog.Write($"map lookup '{original.Text}': value type {shown.Type}, shown as {(ReferenceEquals(shown, value) ? "native" : "decoded")}: {shown.Value}");
+                DkmDataItem dataItem = (DkmDataItem?)shown.GetDataItem<SequenceData>()
+                    ?? (DkmDataItem?)shown.GetDataItem<MapData>()
+                    ?? (DkmDataItem?)shown.GetDataItem<MatrixData>()
+                    ?? new RetypeData(shown);
+                DkmSuccessEvaluationResult answer = DkmSuccessEvaluationResult.Create(
+                    inspectionContext,
+                    stackFrame,
+                    original.Text,
+                    original.Text,
+                    shown.Flags,
+                    shown.Value,
+                    shown.EditableValue,
+                    shown.Type,
+                    shown.Category,
+                    shown.Access,
+                    shown.StorageType,
+                    shown.TypeModifierFlags,
+                    shown.Address,
+                    shown.CustomUIVisualizers,
+                    shown.ExternalModules,
+                    dataItem);
+                answer.SetDataItem(DkmDataCreationDisposition.CreateAlways, new EvalName($"({value.FullName})"));
+                Answer(new DkmEvaluateExpressionAsyncResult(answer));
+            }
+
+            // A value that is itself a slice, dynamic array or map cannot be cast to by name (the C++ evaluator cannot spell
+            // `[]int`), so its header is read from memory (Raw_Slice 16 bytes, Raw_Dynamic_Array 40, Raw_Map 32; OdinMapLayoutTests
+            // checks them) and shown from that: the value itself, `.len`, `.cap` and `[index]` are supported, nothing deeper.
+            Match sliceValue = m_SliceType.Match(valueType);
+            Match dynamicValue = m_DynamicType.Match(valueType);
+            bool mapValue = TryParseMapType(valueType, out string innerKey, out string innerValue);
+            if (sliceValue.Success || dynamicValue.Success || mapValue)
+            {
+                bool dynamicKind = dynamicValue.Success;
+                byte[] header = new byte[dynamicKind ? 40 : mapValue ? 32 : 16];
+                process.ReadMemory(valueAddress, DkmReadMemoryFlags.None, header);
+                ulong dataWord = BitConverter.ToUInt64(header, 0);
+                long length = BitConverter.ToInt64(header, 8);
+                long? capacity = dynamicKind ? BitConverter.ToInt64(header, 16) : null;
+                if (!IsSane(length, capacity))
+                {
+                    Fail($"{display} has an implausible length ({length})");
+                    return;
+                }
+
+                string elementC = sliceValue.Success ? ToCType(sliceValue.Groups["elem"].Value) : dynamicKind ? ToCType(dynamicValue.Groups["elem"].Value) : string.Empty;
+                // A composite element type has no name the C++ evaluator can parse; the elements then stay unlisted.
+                bool elementNamed = elementC.Length > 0 && elementC.IndexOf('[') < 0;
+                string tail = rest.Trim();
+                if (tail.Length == 0)
+                {
+                    if (!mapValue)
+                    {
+                        string elements = elementNamed ? $"({CastName(elementC)}*)0x{dataWord:x},{length}" : string.Empty;
+                        DkmSuccessEvaluationResult sequence = MakeResult(
+                            inspectionContext,
+                            stackFrame,
+                            original.Text,
+                            valueType,
+                            dynamicKind ? $"{{len={length} cap={capacity}}}" : $"{{len={length}}}",
+                            new SequenceData(length, capacity, dynamicKind, elements.Length == 0 ? null : elements),
+                            DkmEvaluationResultFlags.Expandable | DkmEvaluationResultFlags.ReadOnly);
+                        Answer(new DkmEvaluateExpressionAsyncResult(sequence));
+                        return;
+                    }
+
+                    // The sizes of the inner map's key and value come from their type names.
+                    string[] sizes = [$"sizeof({CastName(ToCType(innerKey))})", $"sizeof({CastName(ToCType(innerValue))})"];
+                    EvalBatch(inspectionContext, workList, stackFrame, sizes, sizeValues =>
+                    {
+                        try
+                        {
+                            if (sizeValues[0] is null || sizeValues[1] is null)
+                            {
+                                Fail($"the key or value type of {display} ({valueType}) cannot be named, so it cannot be shown");
+                            }
+                            else
+                            {
+                                MapHeader mapHeader = new(dataWord, ParseUnsigned(sizeValues[0]!.Value), ParseUnsigned(sizeValues[1]!.Value));
+                                Answer(new DkmEvaluateExpressionAsyncResult(MakeResult(
+                                    inspectionContext,
+                                    stackFrame,
+                                    original.Text,
+                                    valueType,
+                                    $"{{len={length}}}",
+                                    new MapData(innerKey, innerValue, length, mapHeader),
+                                    DkmEvaluationResultFlags.Expandable | DkmEvaluationResultFlags.ReadOnly)));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            DebuggerLog.Write($"map lookup '{original.Text}': the inner map failed: {ex}");
+                            Fail($"the inner map of {display} could not be shown: {ex.Message}");
+                        }
+                    });
+                    return;
+                }
+
+                if (tail == ".len" || (tail == ".cap" && dynamicKind))
+                {
+                    long number = tail == ".len" ? length : capacity!.Value;
+                    Answer(new DkmEvaluateExpressionAsyncResult(MakeResult(inspectionContext, stackFrame, original.Text, "int", number.ToString(), null, DkmEvaluationResultFlags.ReadOnly)));
+                    return;
+                }
+
+                OdinWatchExpressions.MapLookupShape? element = tail.StartsWith("[", StringComparison.Ordinal) && !mapValue && elementNamed
+                    ? OdinWatchExpressions.SplitLookup("x" + tail)
+                    : null;
+                if (element is null)
+                {
+                    Fail($"after a lookup whose value is a slice, dynamic array or map, {display} supports only the value, .len, .cap and [index] (and the element type must be nameable)");
+                    return;
+                }
+
+                // `((T*)0xDATA)[index]`: the index is checked against the length read from memory, so no `.data` is involved.
+                List<string> elementExpressions = [];
+                AddCandidate(elementExpressions, new OdinWatchExpressions.IndexRewrite($"(({CastName(elementC)}*)0x{dataWord:x})[{element.Index}]{element.Rest}", []), true);
+                elementExpressions.Add($"(__int64)({element.Index})");
+                EvalBatch(inspectionContext, workList, stackFrame, elementExpressions.ToArray(), elementValues =>
+                {
+                    try
+                    {
+                        long? index = NumberOf(elementValues[1 + ExtraCount]);
+                        string? problem = index is null
+                            ? $"the index {element.Index} could not be evaluated"
+                            : index < 0 || index >= length ? $"index {index} is out of bounds of {display} (length {length})" : elementValues[0] is null ? $"the element of {display} could not be read" : null;
+                        Dictionary<DkmEvaluationResult, long[]> elementHeaders = new();
+                        Dictionary<DkmEvaluationResult, string> elementStrings = new();
+                        if (problem is null)
+                        {
+                            CollectHeaders(elementValues[0]!, elementValues[1], elementValues[2], elementValues[3], process, elementHeaders, elementStrings);
+                        }
+
+                        for (int i = 0; i < elementValues.Length; i++)
+                        {
+                            if (!(i == 0 && problem is null))
+                            {
+                                CloseResult(elementValues[i]);
+                            }
+                        }
+
+                        if (problem is not null)
+                        {
+                            Fail(problem);
+                            return;
+                        }
+
+                        Show(elementValues[0]!, elementHeaders, elementStrings);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebuggerLog.Write($"map lookup '{original.Text}': the element failed: {ex}");
+                        Fail($"the element of {display} could not be shown: {ex.Message}");
+                    }
+                });
+                return;
+            }
+
+            List<string> expressions = [];
+            List<(OdinWatchExpressions.IndexRewrite Candidate, int First, string Prefix)> candidates = [];
+            foreach (string cast in CastVariants(valueC, valueAddress))
+            {
+                foreach (OdinWatchExpressions.IndexRewrite candidate in OdinWatchExpressions.Variants($"({cast})", rest, MaxIndexRewrites))
+                {
+                    candidates.Add((candidate, expressions.Count, $"({cast})"));
+                    AddCandidate(expressions, candidate, true);
+                }
+            }
+
+            EvalBatch(inspectionContext, workList, stackFrame, expressions.ToArray(), values =>
             {
                 try
                 {
-                    DkmSuccessEvaluationResult? value = null;
-                    foreach (DkmSuccessEvaluationResult? candidate in values)
+                    int chosen = -1;
+                    for (int c = 0; c < candidates.Count && chosen < 0; c++)
                     {
-                        if (value is null)
+                        if (values[candidates[c].First] is not null)
                         {
-                            value = candidate;
+                            chosen = c;
                         }
-                        else
+                    }
+
+                    string? problem = null;
+                    DkmSuccessEvaluationResult? value = null;
+                    Dictionary<DkmEvaluationResult, long[]> headers = new();
+                    Dictionary<DkmEvaluationResult, string> strings = new();
+                    if (chosen >= 0)
+                    {
+                        int first = candidates[chosen].First;
+                        value = values[first];
+                        int measureStart = first + 1 + ExtraCount;
+                        long?[] measures = [.. Enumerable.Range(0, candidates[chosen].Candidate.Checks.Count * 2).Select(t => NumberOf(values[measureStart + t]))];
+                        problem = BoundsProblem(candidates[chosen].Candidate, measures, original.Text, candidates[chosen].Prefix, display);
+                        if (problem is null)
                         {
-                            CloseResult(candidate);
+                            if (rest.Length == 0 && valueC == OdinStringType)
+                            {
+                                // The string header is at a known address: read it directly.
+                                if (ReadStringHeader(process, valueAddress) is string valueText)
+                                {
+                                    strings[value!] = valueText;
+                                }
+                            }
+                            else
+                            {
+                                CollectHeaders(value!, values[first + 1], values[first + 2], values[first + 3], process, headers, strings);
+                            }
                         }
+                    }
+
+                    for (int i = 0; i < values.Length; i++)
+                    {
+                        if (chosen >= 0 && i == candidates[chosen].First && problem is null)
+                        {
+                            continue;
+                        }
+
+                        CloseResult(values[i]);
+                    }
+
+                    if (problem is not null)
+                    {
+                        Fail(problem);
+                        return;
                     }
 
                     if (value is null)
                     {
-                        Fail($"the value of {original.Text} could not be read ({Describe(null)})");
+                        Fail($"the value of {original.Text} could not be read");
                         return;
                     }
 
-                    // A string value is read from memory (no further evaluation: this is already two levels deep).
-                    DkmEvaluationResult transformed = valueC == OdinStringType && rest.Length == 0
-                        && ReadStringHeader(process, valueAddress) is string valueText
-                            ? ShowString(value, valueText)
-                            : Transform(value);
-                    DkmSuccessEvaluationResult shown = transformed as DkmSuccessEvaluationResult ?? value;
-                    DebuggerLog.Write($"map lookup '{original.Text}': value type {valueC}, shown as {(ReferenceEquals(shown, value) ? "native" : "decoded")}: {shown.Value}");
-                    Answer(new DkmEvaluateExpressionAsyncResult(DkmSuccessEvaluationResult.Create(
-                        inspectionContext,
-                        stackFrame,
-                        original.Text,
-                        original.Text,
-                        shown.Flags,
-                        shown.Value,
-                        shown.EditableValue,
-                        shown.Type,
-                        shown.Category,
-                        shown.Access,
-                        shown.StorageType,
-                        shown.TypeModifierFlags,
-                        shown.Address,
-                        shown.CustomUIVisualizers,
-                        shown.ExternalModules,
-                        new RetypeData(shown))));
+                    Show(value, headers, strings);
                 }
                 catch (Exception ex)
                 {
@@ -661,12 +1039,67 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         }
     }
 
+    // `T` for a result of type `T *` (the value of `&(member)`), else null.
+    private static string? PointeeType(DkmSuccessEvaluationResult? pointer)
+    {
+        string? type = pointer?.Type;
+        return type is not null && type.EndsWith(" *", StringComparison.Ordinal) ? type.Substring(0, type.Length - 2) : null;
+    }
+
+    // `T` as the C++ evaluator spells it after `(` or in `sizeof(`: a qualified name (`main::Thing`) needs the leading `::`.
+    private static string CastName(string cType)
+    {
+        return cType.IndexOf("::", StringComparison.Ordinal) >= 0 ? "::" + cType : cType;
+    }
+
+    private static DkmSuccessEvaluationResult MakeResult(
+        DkmInspectionContext inspectionContext,
+        DkmStackWalkFrame stackFrame,
+        string text,
+        string type,
+        string value,
+        DkmDataItem? dataItem,
+        DkmEvaluationResultFlags flags)
+    {
+        return DkmSuccessEvaluationResult.Create(
+            inspectionContext,
+            stackFrame,
+            text,
+            text,
+            flags,
+            value,
+            null,
+            type,
+            DkmEvaluationResultCategory.Data,
+            DkmEvaluationResultAccessType.None,
+            DkmEvaluationResultStorageType.None,
+            DkmEvaluationResultTypeModifierFlags.None,
+            null,
+            null,
+            null,
+            dataItem);
+    }
+
+    // The expression a result's children are built from: its FullName, unless the result carries an EvalName (a lookup result
+    // is named by what the user typed, which is not evaluable once the cast address is gone from it).
+    private static string ExpressionOf(DkmEvaluationResult result)
+    {
+        return result.GetDataItem<EvalName>()?.Text ?? result.FullName ?? string.Empty;
+    }
+
+    private sealed class EvalName(string text) : DkmDataItem
+    {
+        public string Text { get; } = text;
+    }
+
     // The bytes a stored key must have to equal the typed one: the text of a string (a literal, or a string variable read from
-    // memory), the number for keys of at most eight bytes, else the raw bytes of a variable of the key's type.
-    private static byte[]? SearchKey(DkmProcess process, MapProbe probe, string keyType, string keyC, ulong keySize, bool isString, out string? problem)
+    // memory), the number for keys of at most eight bytes, else the raw bytes of a variable of the key's type. `variant` is the
+    // form of the key text that evaluated (ChooseKeyVariant).
+    private static byte[]? SearchKey(DkmProcess process, MapProbe probe, int variant, string keyType, string keyC, ulong keySize, bool isString, out string? problem)
     {
         problem = null;
-        DkmSuccessEvaluationResult? number = probe.Values[MapProbe.IndexNumber];
+        long? number = probe.Number(variant);
+        ulong address = probe.Address(variant);
         if (isString)
         {
             if (OdinWatchExpressions.TryParseStringLiteral(probe.Shape.Index, out byte[] literal))
@@ -674,7 +1107,6 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 return literal;
             }
 
-            ulong address = AddressOf(probe);
             if (address != 0)
             {
                 byte[] header = new byte[16];
@@ -693,15 +1125,15 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 }
             }
 
-            problem = $"the key {probe.Shape.Index} must be a string literal or a string variable";
+            problem = $"the key {probe.Shape.Index} must be a string literal or an expression that is a string";
             return null;
         }
 
         bool floating = keyC is "float" or "double";
-        if (!floating && keySize <= 8 && number is not null && TryParseSigned(number.Value, out long numeric))
+        if (!floating && keySize <= 8 && number is long numeric)
         {
             // The key type's signedness comes from its Odin name; a value its type cannot hold is reported, not truncated.
-            byte[]? integer = OdinWatchExpressions.TryIntegerKey(numeric, (int)keySize, !(keyType.StartsWith("u", StringComparison.Ordinal)));
+            byte[]? integer = OdinWatchExpressions.TryIntegerKey(numeric, (int)keySize, !keyType.StartsWith("u", StringComparison.Ordinal));
             if (integer is null)
             {
                 problem = $"key {numeric} does not fit the key type {keyType}, so it is not in {probe.Shape.Base}";
@@ -710,23 +1142,15 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
             return integer;
         }
 
-        ulong variable = AddressOf(probe);
-        if (variable != 0 && keySize <= (ulong)MaxLookupKeyBytes)
+        if (address != 0 && keySize <= (ulong)MaxLookupKeyBytes)
         {
             byte[] raw = new byte[keySize];
-            process.ReadMemory(variable, DkmReadMemoryFlags.None, raw);
+            process.ReadMemory(address, DkmReadMemoryFlags.None, raw);
             return raw;
         }
 
         problem = $"the key {probe.Shape.Index} must be a number, or a variable of the key type {keyC}";
         return null;
-    }
-
-    // Address of the typed key when it is a variable (the `&(index)` probe), else 0.
-    private static ulong AddressOf(MapProbe probe)
-    {
-        DkmSuccessEvaluationResult? address = probe.Values[MapProbe.IndexAddress];
-        return address is not null && TryParseSigned(address.Value, out long value) ? (ulong)value : 0;
     }
 
     // Reads the map's hash and key arrays and searches them (OdinMapSearch); string bodies are read from the debuggee.
@@ -1596,7 +2020,7 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
         }
 
         // The C++ evaluator's own array view: `name.data,N` expands to [0]..[N-1] with full native element display.
-        string expression = $"{result.FullName}.data,{sequence.Length}";
+        string expression = sequence.ElementsExpression ?? $"{ExpressionOf(result)}.data,{sequence.Length}";
         DkmLanguageExpression elements = DkmLanguageExpression.Create(inspectionContext.Language, DkmEvaluationFlags.TreatAsExpression, expression, null);
         inspectionContext.EvaluateExpression(workList, elements, result.StackFrame, evaluated =>
         {
@@ -1868,25 +2292,19 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 DkmEvaluationResultEnumContext.Create(pseudo.Length, result.StackFrame, inspectionContext, new MapEnum(result, pseudo, [], null))));
         }
 
+        // The member types replace the names parsed from the map's type name when they evaluate (see MapProbe).
         string keyC = ToCType(map.KeyType);
         string valueC = ToCType(map.ValueType);
         // Sizes come from the members of the C++ type of `data` (struct { key, value, hash, ... } *), which needs no type name:
         // proc-local types are spelled `main::main::Triple::$553`, which the C++ evaluator cannot parse.
-        string[] expressions = [$"{result.FullName}.data", $"sizeof({result.FullName}.data->key)", $"sizeof({result.FullName}.data->value)"];
-        EvalBatch(inspectionContext, workList, result.StackFrame, expressions, values =>
+        string mapExpression = ExpressionOf(result);
+        string[] expressions = map.Header is null
+            ? [$"{mapExpression}.data", $"sizeof({mapExpression}.data->key)", $"sizeof({mapExpression}.data->value)", $"&({mapExpression}.data->key)", $"&({mapExpression}.data->value)"]
+            : [];
+        void ListEntries(ulong data, ulong keySize, ulong valueSize)
         {
             try
             {
-                if (values[0] is null || values[1] is null || values[2] is null)
-                {
-                    DebuggerLog.Write($"map {result.FullName} : {result.Type}: header evaluations failed ({Describe(values[0])} | {Describe(values[1])} | {Describe(values[2])})");
-                    OnlyPseudo();
-                    return;
-                }
-
-                ulong data = ParseUnsigned(values[0]!.Value);
-                ulong keySize = ParseUnsigned(values[1]!.Value);
-                ulong valueSize = ParseUnsigned(values[2]!.Value);
                 OdinMapLayout.MapArrays arrays = OdinMapLayout.Arrays(data, keySize, valueSize);
                 ulong capacity = arrays.Capacity;
                 if (capacity == 0 || capacity > MaxMapCapacity)
@@ -1913,6 +2331,15 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 }
 
                 DebuggerLog.Write($"map {result.FullName} : {result.Type}: cap={capacity} used={slots.Count} keySize={keySize} valueSize={valueSize} keys=0x{keys:x} vals=0x{vals:x} hashes=0x{hashes:x}");
+                if (slots.Count != map.Length)
+                {
+                    // See LookupMapEntry: the sizes belong to another map type that shares this one's name in the debug info.
+                    DebuggerLog.Write($"map {result.FullName}: holds {map.Length} entries but the layout (key size {keySize}, value size {valueSize}) finds {slots.Count}; entries not shown");
+                    pseudo = [.. pseudo, Pseudo(result, inspectionContext, "[entries]", "entries", $"not shown: the debug info gives another map type the same name ({result.Type})", "string")];
+                    OnlyPseudo();
+                    return;
+                }
+
                 MapLayout layout = new(keys, vals, keySize, valueSize, keyC, valueC);
                 DkmEvaluationResult[] shownPseudo = pseudo;
                 if (slots.Count > MaxShownSlots)
@@ -1931,6 +2358,26 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
                 DebuggerLog.Write($"map children of {result.FullName} failed: {ex}");
                 OnlyPseudo();
             }
+        }
+
+        if (map.Header is not null)
+        {
+            ListEntries(map.Header.Data, map.Header.KeySize, map.Header.ValueSize);
+            return;
+        }
+
+        EvalBatch(inspectionContext, workList, result.StackFrame, expressions, values =>
+        {
+            if (values[0] is null || values[1] is null || values[2] is null)
+            {
+                DebuggerLog.Write($"map {result.FullName} : {result.Type}: header evaluations failed ({Describe(values[0])} | {Describe(values[1])} | {Describe(values[2])})");
+                OnlyPseudo();
+                return;
+            }
+
+            keyC = ToCType(PointeeType(values[3]) ?? map.KeyType);
+            valueC = ToCType(PointeeType(values[4]) ?? map.ValueType);
+            ListEntries(ParseUnsigned(values[0]!.Value), ParseUnsigned(values[1]!.Value), ParseUnsigned(values[2]!.Value));
         });
     }
 
@@ -2087,8 +2534,11 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     }
 
     // Marks an evaluation result as one of ours so GetChildren knows to build len/cap/elements.
-    private sealed class SequenceData(long length, long? capacity, bool isDynamic) : DkmDataItem
+    private sealed class SequenceData(long length, long? capacity, bool isDynamic, string? elementsExpression = null) : DkmDataItem
     {
+        // The array view that lists the elements (`(T*)0xDATA,N`), when the result was decoded from memory and has no evaluable name.
+        public string? ElementsExpression { get; } = elementsExpression;
+
         public long Length { get; } = length;
 
         public long? Capacity { get; } = capacity;
@@ -2109,8 +2559,21 @@ public sealed class OdinEvaluator : IDkmLanguageExpressionEvaluator
     }
 
     // Marks a map result; GetChildren decodes the runtime layout.
-    private sealed class MapData(string keyType, string valueType, long length) : DkmDataItem
+    // A map header decoded from memory: the `data` word and the sizes of its key and value (see MapData).
+    private sealed class MapHeader(ulong data, ulong keySize, ulong valueSize)
     {
+        public ulong Data { get; } = data;
+
+        public ulong KeySize { get; } = keySize;
+
+        public ulong ValueSize { get; } = valueSize;
+    }
+
+    private sealed class MapData(string keyType, string valueType, long length, MapHeader? header = null) : DkmDataItem
+    {
+        // Set when the map was decoded from memory (a map that is the value of another map): there is no C++ expression for it.
+        public MapHeader? Header { get; } = header;
+
         public string KeyType { get; } = keyType;
 
         public string ValueType { get; } = valueType;

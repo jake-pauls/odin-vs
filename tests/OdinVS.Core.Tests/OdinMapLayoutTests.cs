@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -231,9 +232,40 @@ public sealed class OdinMapLayoutTests
         }
     }
 
+    // `odin run` builds and then starts the exe itself, and that start failed once ("Failed to execute command", exit -1) on a
+    // freshly written exe (2026-11-10: almost certainly a virus scanner holding the new file). So the exe is built with `odin build`
+    // and started here, retrying only when Windows refuses to start it.
     private static LayoutDump RunLayoutDumpIn(string work, string source)
     {
-        ProcessStartInfo start = new(OdinPath)
+        string exe = Path.Combine(work, "layout_dump.exe");
+        (int buildCode, string buildOutput, string buildError) = RunToEnd(OdinPath, ["build", source, "-file", "-out:" + exe], work);
+        Assert.AreEqual(0, buildCode, "odin build failed: " + buildError + buildOutput);
+
+        (int code, string output, string error) = RunToEndWithRetry(exe, [], work);
+        Assert.AreEqual(0, code, "the layout dump program failed: " + error + output);
+        return Parse(output);
+    }
+
+    private static (int ExitCode, string Output, string Error) RunToEndWithRetry(string fileName, IEnumerable<string> arguments, string work)
+    {
+        const int attempts = 5;
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return RunToEnd(fileName, arguments, work);
+            }
+            catch (Win32Exception ex) when (attempt < attempts)
+            {
+                Console.WriteLine($"starting {fileName} failed (attempt {attempt} of {attempts}): {ex.Message}");
+                Thread.Sleep(500 * attempt);
+            }
+        }
+    }
+
+    private static (int ExitCode, string Output, string Error) RunToEnd(string fileName, IEnumerable<string> arguments, string work)
+    {
+        ProcessStartInfo start = new(fileName)
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -241,10 +273,10 @@ public sealed class OdinMapLayoutTests
             CreateNoWindow = true,
             WorkingDirectory = work,
         };
-        start.ArgumentList.Add("run");
-        start.ArgumentList.Add(source);
-        start.ArgumentList.Add("-file");
-        start.ArgumentList.Add("-out:" + Path.Combine(work, "layout_dump.exe"));
+        foreach (string argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
 
         using Process process = Process.Start(start)!;
         Task<string> output = process.StandardOutput.ReadToEndAsync();
@@ -252,13 +284,11 @@ public sealed class OdinMapLayoutTests
         if (!process.WaitForExit(TimeSpan.FromMinutes(2)))
         {
             process.Kill(entireProcessTree: true);
-            Assert.Fail("odin run on the layout dump program did not finish in 2 minutes");
+            Assert.Fail($"{Path.GetFileName(fileName)} did not finish in 2 minutes");
         }
 
-        Assert.AreEqual(0, process.ExitCode, "odin run failed: " + error.Result + output.Result);
-        return Parse(output.Result);
+        return (process.ExitCode, output.Result, error.Result);
     }
-
     private static LayoutDump Parse(string text)
     {
         List<MapDump> dumps = [];
