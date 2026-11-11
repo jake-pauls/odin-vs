@@ -20,6 +20,7 @@
     <ProjectReference Include="..\OdinVS.LanguageServer\OdinVS.LanguageServer.csproj" />
     <ProjectReference Include="..\OdinVS.ProjectSystem\OdinVS.ProjectSystem.csproj" />
     <ProjectReference Include="..\OdinVS.Core\OdinVS.Core.csproj" />
+    <ProjectReference Include="..\OdinVS.Debugger\OdinVS.Debugger.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="source.extension.vsixmanifest" />
@@ -31,9 +32,9 @@
       <IncludeInVSIX>true</IncludeInVSIX>
       <VSIXSubPath>ols\builtin\</VSIXSubPath>
     </Content>
-    <Content Include="Visualizers\odin.natvis">
+    <!-- Compiled by vsdconfigtool in OdinVS.Debugger (built first through the project reference); the manifest lists it as a DebuggerEngineExtension. -->
+    <Content Include="..\OdinVS.Debugger\bin\$(Configuration)\net472\OdinVS.Debugger.vsdconfig" Link="OdinVS.Debugger.vsdconfig">
       <IncludeInVSIX>true</IncludeInVSIX>
-      <VSIXSubPath>Visualizers\</VSIXSubPath>
     </Content>
     <Content Include="odin.pkgdef">
       <IncludeInVSIX>true</IncludeInVSIX>

@@ -6,3 +6,5 @@ obj/
 nuget/*.nupkg
 UpgradeLog*.htm
 _UpgradeReport_Files/
+# Per-user Visual Studio settings of C++ projects (debugger arguments, working directory)
+*.vcxproj.user

@@ -74,7 +74,24 @@ report :: proc(m: ^map[$K]$V) {
 	}
 }
 
+// Sizes and field offsets of the headers the debugger visualizer reads from process memory (strings, slices, dynamic arrays)
+// or decodes (maps). HEADER <name> size=<n> <field>=<offset> ...
+report_headers :: proc() {
+	fmt.printfln("HEADER Raw_Slice size=%v data=%v len=%v", size_of(runtime.Raw_Slice), offset_of(runtime.Raw_Slice, data), offset_of(runtime.Raw_Slice, len))
+	fmt.printfln(
+		"HEADER Raw_Dynamic_Array size=%v data=%v len=%v cap=%v allocator=%v",
+		size_of(runtime.Raw_Dynamic_Array), offset_of(runtime.Raw_Dynamic_Array, data), offset_of(runtime.Raw_Dynamic_Array, len),
+		offset_of(runtime.Raw_Dynamic_Array, cap), offset_of(runtime.Raw_Dynamic_Array, allocator),
+	)
+	fmt.printfln("HEADER Raw_String size=%v data=%v len=%v", size_of(runtime.Raw_String), offset_of(runtime.Raw_String, data), offset_of(runtime.Raw_String, len))
+	fmt.printfln(
+		"HEADER Raw_Map size=%v data=%v len=%v allocator=%v map_hash=%v",
+		size_of(runtime.Raw_Map), offset_of(runtime.Raw_Map, data), offset_of(runtime.Raw_Map, len), offset_of(runtime.Raw_Map, allocator), size_of(runtime.Map_Hash),
+	)
+}
+
 main :: proc() {
+	report_headers()
 	dump([1]u8, [1]u8, 20)
 	dump([3]u8, [5]u8, 20)
 	dump([4]u8, [8]u8, 20)

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration xmlns="http://schemas.microsoft.com/vstudio/vsdconfig/2008">
+  <ManagedComponent ComponentId="4ae7f393-bbc0-48f3-91fd-047db173a822" ComponentLevel="9992100" AssemblyName="OdinVS.Debugger">
+    <Class Name="OdinVS.Debugger.OdinEvaluator">
+      <Implements>
+        <InterfaceGroup>
+          <Filter>
+            <LanguageId RequiredValue="DkmLanguageId.C" />
+          </Filter>
+          <Interface Name="IDkmLanguageExpressionEvaluator" />
+        </InterfaceGroup>
+      </Implements>
+    </Class>
+  </ManagedComponent>
+</Configuration>
