@@ -109,6 +109,7 @@ internal sealed class MsBuildSandbox
             File.Copy(file, Path.Combine(destination, relative));
         }
     }
+
     // Evaluates the project without building and prints the named item (JSON), the way a static evaluation sees it.
     public MsBuildResult GetItem(string projectDirectory, string projectFile, string item)
     {

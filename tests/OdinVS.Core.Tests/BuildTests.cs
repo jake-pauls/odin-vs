@@ -138,7 +138,7 @@ public sealed class OdinBuildArgumentsTests
     }
 
     [TestMethod]
-    public void ALinkInputThatStaysSpacedAfterRelativizingIsReported()
+    public void ALinkInputWithSpacesCanStayWhitespacedAfterRelativizing()
     {
         Assert.IsTrue(OdinBuildArguments.HasWhitespace(OdinBuildArguments.ToLinkerPath(@"C:\a b\x.lib", @"D:\p")));
         Assert.IsTrue(OdinBuildArguments.HasWhitespace(OdinBuildArguments.ToLinkerPath(@"C:\a b\x.lib", @"C:\p")));

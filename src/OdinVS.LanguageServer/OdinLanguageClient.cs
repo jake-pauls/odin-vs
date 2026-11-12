@@ -60,7 +60,7 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
         if (!m_Subscribed)
         {
             m_Subscribed = true;
-            registry.CollectionsChanged += () => _ = RestartAsync();
+            registry.CollectionsChanged += () => _ = RestartAsync(CancellationToken.None);
         }
 
         foreach (OdinReferenceProblem problem in collections.Problems)
@@ -86,7 +86,7 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
         return new Connection(next.Process.StandardOutput.BaseStream, next.Process.StandardInput.BaseStream);
     }
 
-    private async Task RestartAsync()
+    private async Task RestartAsync(CancellationToken cancellationToken = default)
     {
         try
         {

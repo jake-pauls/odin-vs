@@ -80,11 +80,9 @@
     <OdinCollectionName Condition="'$(OdinCollectionName)' == ''">$(MSBuildProjectName)</OdinCollectionName>
     <OdinCollectionRoot Condition="'$(OdinCollectionRoot)' == ''">$(MSBuildProjectDirectory)</OdinCollectionRoot>
     <OdinCollectionRoot>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(OdinCollectionRoot)'))</OdinCollectionRoot>
-    <!-- File that Link references of this project link against; empty for projects that produce none. -->
-    <!-- A Dll is linked through the import library odin writes next to it; a Lib is its own link input. -->
+    <!-- File that Link references of this project link against (empty for projects that produce none). A Dll is linked through the import library odin writes next to it; a Lib is its own link input. -->
     <OdinLinkLibrary Condition="'$(OdinLinkLibrary)' == '' and '$(OdinOutputType)' == 'Dll'">$([System.IO.Path]::ChangeExtension('$(TargetPath)', '.lib'))</OdinLinkLibrary>
     <OdinLinkLibrary Condition="'$(OdinLinkLibrary)' == '' and '$(OdinOutputType)' == 'Lib'">$(TargetPath)</OdinLinkLibrary>
-    <OdinLinkLibrary Condition="'$(OdinLinkLibrary)' == ''"></OdinLinkLibrary>
   </PropertyGroup>
 
   <!-- Returns this project's node plus the nodes of everything it references (MSBuild recurses; results are cached per project, so a

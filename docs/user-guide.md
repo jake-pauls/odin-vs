@@ -88,7 +88,7 @@ Everything an `.odinproj` can set, with its default. Properties are plain MSBuil
 | `TargetPath` | `<OutDir><TargetName>` + `.exe`, `.dll` or `.lib` by `OdinOutputType` | Full output path (relative to the project, or absolute); the `.pdb` is written next to it with the same name |
 | `OdinCollectionName` | project name | Name other projects use to import this one when they reference it: `import "<name>:<path>"` (see [References](#references)) |
 | `OdinCollectionRoot` | the project directory | Directory the collection name points at (relative to the project, or absolute) |
-| `OdinOutputType` | `Exe` | What the project builds: `Exe`, `Dll` or `Lib` (static library). Selects `-build-mode:` and the output extension (`.exe`, `.dll` with its import `.lib` next to it, `.lib`). Any other value is an error (`ODIN0106`). **`Lib` does not work yet:** with the installed Odin (`dev-2026-10`) `-build-mode:lib` fails to link on Windows (see [References](#references)). An F5 on a library project says it cannot be started |
+| `OdinOutputType` | `Exe` | What the project builds: `Exe`, `Dll` or `Lib` (static library). Selects `-build-mode:` and the output extension (`.exe`, `.dll` with its import `.lib` next to it, `.lib`). Any other value is an error (`ODIN0106`). **`Lib` does not work yet:** with the installed Odin (`dev-2026-10`) `-build-mode:lib` fails to link on Windows (see [References](#references)). An F5 on a library project is meant to say it cannot be started (implemented, not checked in Exp) |
 | `OdinLinkLibrary` | the import `.lib` for `Dll`, the `.lib` for `Lib`, otherwise empty | The library file a project that links this one passes to the linker; empty for executables, so linking an executable is an error (`ODIN0105`) |
 
 | Item | Purpose |

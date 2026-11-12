@@ -11,7 +11,7 @@ public enum OdinReferenceKind
 
 public sealed record OdinReferenceEdge(string ProjectPath, OdinReferenceKind Kind);
 
-// One project of the reference graph. Native projects (.vcxproj, .csproj) are leaves: only their LinkLibrary matters.
+// One project of the reference graph. Native projects (.vcxproj) are leaves: only their LinkLibrary matters.
 // Sources are the project's own OdinCompile files (consumers recompile them, so they are incremental-build inputs).
 public sealed record OdinProjectNode(
     string ProjectPath,
