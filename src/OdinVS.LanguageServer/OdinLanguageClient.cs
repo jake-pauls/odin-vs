@@ -55,7 +55,7 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
 
         // Every .odinproj in the solution contributes its collection (ols takes one set per process). A change in the project set
         // restarts ols through StopAsync/StartAsync, which lands here again.
-        OdinCollectionRegistry registry = OdinCollectionRegistry.Instance;
+        OdinCollectionTracker registry = OdinCollectionRegistry.Instance;
         OdinSolutionCollectionsResult collections = registry.Current();
         if (!m_Subscribed)
         {
@@ -88,6 +88,15 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
 
     private async Task RestartAsync(CancellationToken cancellationToken = default)
     {
+        lock (m_Gate)
+        {
+            if (m_Started is null)
+            {
+                // ols is not running (the client was never activated, or failed): the next activation reads the current set.
+                return;
+            }
+        }
+
         try
         {
             m_Log.Write("the solution's Odin collections changed; restarting ols");

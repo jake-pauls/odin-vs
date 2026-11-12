@@ -159,7 +159,9 @@
            Code="ODIN0106" Text="OdinOutputType '$(OdinOutputType)' is not valid. Use Exe, Dll or Lib." />
   </Target>
 
-  <Target Name="Build" DependsOnTargets="_OdinCheckOutputType;OdinResolveReferences" Inputs="@(OdinCompile);@(OdinReferencedSource);@(OdinLinkInput);$(MSBuildProjectFullPath)" Outputs="$(TargetPath);@(_OdinPdbOutput);@(_OdinImportLibOutput)">
+  <Target Name="Build" DependsOnTargets="_OdinCheckOutputType;OdinResolveReferences;_OdinCompile;_OdinCopyRuntimeDlls" />
+
+  <Target Name="_OdinCompile" DependsOnTargets="_OdinCheckOutputType;OdinResolveReferences" Inputs="@(OdinCompile);@(OdinReferencedSource);@(OdinLinkInput);$(MSBuildProjectFullPath)" Outputs="$(TargetPath);@(_OdinPdbOutput);@(_OdinImportLibOutput)">
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))" />
     <OdinBuild OdinExe="$(OdinExe)"
                PackageDirectory="$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(OdinPackageDir)'))"
@@ -170,9 +172,13 @@
                Collections="@(OdinCollection)"
                LinkInputs="@(OdinLinkInput)"
                ExtraArguments="$(OdinExtraArgs)" />
-    <!-- A DLL linked through its import library must sit next to the exe at run time (what a C++ project reference does as "copy local"). -->
+  </Target>
+
+  <!-- A DLL linked through its import library must sit next to the exe at run time (what a C++ project reference does as "copy local"). This runs on every build, outside the up-to-date check of _OdinCompile, so a deleted or stale copy is restored; the DLL's PDB comes along when it exists. -->
+  <Target Name="_OdinCopyRuntimeDlls" DependsOnTargets="OdinResolveReferences">
     <ItemGroup>
       <_OdinRuntimeDll Include="@(OdinLinkInput->WithMetadataValue('Extension', '.lib')->'%(RootDir)%(Directory)%(Filename).dll')" />
+      <_OdinRuntimeDll Include="@(_OdinRuntimeDll->'%(RootDir)%(Directory)%(Filename).pdb')" />
       <_OdinRuntimeDll Remove="@(_OdinRuntimeDll)" Condition="!Exists('%(_OdinRuntimeDll.FullPath)')" />
     </ItemGroup>
     <Copy SourceFiles="@(_OdinRuntimeDll)" DestinationFolder="$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))" SkipUnchangedFiles="true" Condition="'@(_OdinRuntimeDll)' != ''" />

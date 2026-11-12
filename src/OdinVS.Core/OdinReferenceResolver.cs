@@ -40,6 +40,7 @@ public static class OdinReferenceResolver
     public const string DuplicateCollectionCode = "ODIN0103";
     public const string UnresolvedReferenceCode = "ODIN0104";
     public const string NoLibraryCode = "ODIN0105";
+    public const string DuplicateLibraryCode = "ODIN0108";
 
     public static OdinResolvedReferences Resolve(string rootProjectPath, IEnumerable<OdinProjectNode> nodes)
     {
@@ -137,6 +138,13 @@ public static class OdinReferenceResolver
                 }
                 else if (!linkInputs.Contains(target.LinkLibrary, StringComparer.OrdinalIgnoreCase))
                 {
+                    // The linker finds /DEFAULTLIB:<name> through /LIBPATH folders, so two libraries with one file name would link the first only.
+                    string? sameName = linkInputs.FirstOrDefault(existing => string.Equals(Path.GetFileName(existing), Path.GetFileName(target.LinkLibrary), StringComparison.OrdinalIgnoreCase));
+                    if (sameName is not null)
+                    {
+                        problems.Add(new OdinReferenceProblem(DuplicateLibraryCode, $"two linked libraries are both named '{Path.GetFileName(target.LinkLibrary)}' ('{sameName}' and '{target.LinkLibrary}'). The linker would use only one of them. Give one project a different TargetName."));
+                    }
+
                     linkInputs.Add(target.LinkLibrary);
                 }
 

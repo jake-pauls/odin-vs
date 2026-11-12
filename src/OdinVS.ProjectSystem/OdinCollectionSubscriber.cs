@@ -21,6 +21,7 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
     private readonly IActiveConfiguredProjectSubscriptionService m_Subscription;
     private readonly Log m_Log = Log.Default;
     private IDisposable? m_Link;
+    private string m_LastLogged = string.Empty;
 
     [ImportingConstructor]
     public OdinCollectionSubscriber(UnconfiguredProject project, IActiveConfiguredProjectSubscriptionService subscription)
@@ -77,7 +78,12 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
                 return;
             }
 
-            m_Log.Write($"collection of {m_Project.FullPath}: {name} = {root}");
+            string value = name + " = " + root;
+            if (!string.Equals(value, m_LastLogged, StringComparison.Ordinal))
+            {
+                m_LastLogged = value;
+                m_Log.Write($"collection of {m_Project.FullPath}: {value}");
+            }
             OdinCollectionRegistry.Instance.Set(m_Project.FullPath, name, root);
         }
         catch (Exception ex)

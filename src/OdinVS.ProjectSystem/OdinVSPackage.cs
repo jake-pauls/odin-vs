@@ -23,7 +23,7 @@ public sealed class OdinVSPackage : AsyncPackage
 
     private readonly Log m_Log = Log.Default;
     private int m_Checking;
-    private IReadOnlyList<string> m_ToolWarnings = [];
+    private volatile IReadOnlyList<string> m_ToolWarnings = [];
     private IVsInfoBarHost? m_Host;
     private IVsInfoBarUIElement? m_Bar;
 
@@ -54,7 +54,7 @@ public sealed class OdinVSPackage : AsyncPackage
     {
         try
         {
-            await ReplaceInfoBarAsync(CombinedText(), cancellationToken);
+            await ReplaceInfoBarAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -90,7 +90,7 @@ public sealed class OdinVSPackage : AsyncPackage
             IReadOnlyList<string> warnings = await Task.Run(() => CollectWarnings(extensionDirectory), cancellationToken);
             m_Log.Write(warnings.Count == 0 ? "tool check: odin and ols found, versions match" : $"tool check: {warnings.Count} warning(s)");
             m_ToolWarnings = warnings;
-            await ReplaceInfoBarAsync(CombinedText(), cancellationToken);
+            await ReplaceInfoBarAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -114,9 +114,11 @@ public sealed class OdinVSPackage : AsyncPackage
     }
 
     // Removes the bar from an earlier check, then shows a new one when text is not null.
-    private async Task ReplaceInfoBarAsync(string? text, CancellationToken cancellationToken)
+    private async Task ReplaceInfoBarAsync(CancellationToken cancellationToken)
     {
         await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+        // Read after the switch so the newest tool warnings and collisions win when two updates overlap.
+        string? text = CombinedText();
         if (m_Host is not null && m_Bar is not null)
         {
             m_Host.RemoveInfoBar(m_Bar);
@@ -142,7 +144,14 @@ public sealed class OdinVSPackage : AsyncPackage
             KnownMonikers.StatusWarning,
             true);
         IVsInfoBarUIElement element = factory.CreateInfoBar(model);
-        LogLinkHandler handler = new(Log.DataDirectory, m_Log, () => m_Bar = null);
+        LogLinkHandler handler = new(Log.DataDirectory, m_Log, () =>
+        {
+            // The old bar's close can arrive after a newer bar was shown; only clear our own.
+            if (ReferenceEquals(m_Bar, element))
+            {
+                m_Bar = null;
+            }
+        });
         element.Advise(handler, out uint cookie);
         handler.Cookie = cookie;
         host.AddInfoBar(element);

@@ -106,6 +106,27 @@ public sealed class OdinReferenceResolverTests
     }
 
     [TestMethod]
+    public void TwoLinkedLibrariesWithOneFileNameAreAnError()
+    {
+        OdinProjectNode a = new(@"C:\work\A\A.vcxproj", "A", "A", @"C:\work\A", @"C:\work\A\out\x.lib", true, [], []);
+        OdinProjectNode b = new(@"C:\work\B\B.vcxproj", "B", "B", @"C:\work\B", @"C:\work\B\out\X.LIB", true, [], []);
+        OdinResolvedReferences result = OdinReferenceResolver.Resolve(PathOf("App"), [Odin("App", Link(a.ProjectPath), Link(b.ProjectPath)), a, b]);
+
+        Assert.HasCount(1, result.Problems);
+        Assert.AreEqual(OdinReferenceResolver.DuplicateLibraryCode, result.Problems[0].Code);
+        StringAssert.Contains(result.Problems[0].Message, "TargetName");
+    }
+
+    [TestMethod]
+    public void TwoLinkedLibrariesWithDifferentFileNamesAreFine()
+    {
+        OdinResolvedReferences result = OdinReferenceResolver.Resolve(PathOf("App"), [Odin("App", Link(Native("A").ProjectPath), Link(Native("B").ProjectPath)), Native("A"), Native("B")]);
+
+        Assert.IsEmpty(result.Problems);
+        Assert.HasCount(2, result.LinkInputs);
+    }
+
+    [TestMethod]
     public void CycleIsRejectedWithItsPath()
     {
         OdinResolvedReferences result = OdinReferenceResolver.Resolve(

@@ -50,7 +50,7 @@ public sealed class OdinDebugLaunchProvider : DebugLaunchProviderBase
         {
             IProjectProperties common = m_ConfiguredProject.Services.ProjectPropertiesProvider!.GetCommonProperties();
             string outputType = await common.GetEvaluatedPropertyValueAsync("OdinOutputType");
-            if (outputType is "Dll" or "Lib")
+            if (outputType.Equals("Dll", StringComparison.OrdinalIgnoreCase) || outputType.Equals("Lib", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException($"Project '{projectName}' builds a library (OdinOutputType is {outputType}), which cannot be started. Set an executable project that references it as the startup project.");
             }

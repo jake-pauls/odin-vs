@@ -150,7 +150,7 @@ The DLL is built first, its import library goes to the linker (with its folder a
 foreign { dll_mul :: proc "c" (a, b: i32) -> i32 --- }
 ```
 
-Samples: `tests/samples/LinkApp`, `LinkDll` (and `LinkLib`, the static one) in `OdinLinking.sln`. A project folder with spaces is fine (the library is passed relative to the project), but the library path itself cannot have spaces after that (`ODIN0107`).
+Samples: `tests/samples/LinkApp`, `LinkDll` (and `LinkLib`, the static one) in `OdinLinking.sln`. A project folder with spaces is fine (the library is passed relative to the project), but the library path itself cannot have spaces after that (`ODIN0107`). The DLL (and its PDB) is copied next to the exe on every build, also when the exe itself is up to date, so a deleted copy comes back. `Clean` does not remove those copies yet.
 
 **Known gaps** (see `docs/milestones.md`, M6): `OdinOutputType` `Lib` (static library) fails with the installed Odin; `Link` to a C/C++ `.vcxproj` is not built or tested with a real C++ project (only an Odin DLL has been linked).
 
@@ -239,6 +239,7 @@ Odin does not give its errors codes, so odin-vs assigns them.
 | `ODIN0105` | error | A `Link` reference to a project that produces no library | Use a `Source` reference, or reference a library project |
 | `ODIN0106` | error | `OdinOutputType` is not `Exe`, `Dll` or `Lib` | Fix the value in the `.odinproj` |
 | `ODIN0107` | error | A library to link has a path with spaces that cannot be written relative to the project folder | Odin splits `-extra-linker-flags` on spaces; move the project or set `OutDir` so the library path has none |
+| `ODIN0108` | error | Two linked libraries (Link references, including through Source references) have the same file name in different folders; the linker finds a library by name and would use only one | Give one of the projects a different `TargetName` |
 | `ODINPKG1` | warning | Packing `Odin.Sdk` with `scripts\pack-sdk.ps1` | Reminder that the package is local only and must not be published; not a build diagnostic |
 | `ols.<code>` | error | A diagnostic from the ols language server while editing (for example `ols.checker`, `ols.Syntax`) | Appears on save; not part of the build |
 

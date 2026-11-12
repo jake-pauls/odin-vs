@@ -84,6 +84,24 @@ public sealed class LinkTargetTests
     }
 
     [TestMethod]
+    public void ADeletedRuntimeDllIsCopiedAgainWithoutRebuildingTheExecutable()
+    {
+        string work = MsBuildSandbox.Instance.CopySamples("LinkApp", "LinkDll");
+        Assert.AreEqual(0, Build(work, "LinkApp").ExitCode);
+        string copy = Path.Combine(work, "LinkApp", "bin", "Debug", "LinkDll.dll");
+        string copiedPdb = Path.Combine(work, "LinkApp", "bin", "Debug", "LinkDll.pdb");
+        Assert.IsTrue(File.Exists(copiedPdb), "the DLL's PDB is copied with it");
+        File.Delete(copy);
+        File.Delete(copiedPdb);
+
+        MsBuildResult again = Build(work, "LinkApp");
+        Assert.AreEqual(0, again.ExitCode, again.Output);
+        Assert.DoesNotContain("ODIN: ", again.Output, "the executable is up to date");
+        Assert.IsTrue(File.Exists(copy), "the DLL is back next to the exe");
+        Assert.IsTrue(File.Exists(copiedPdb));
+    }
+
+    [TestMethod]
     public void ALibraryProjectAsksOdinForAStaticLibrary()
     {
         // Pins the wiring only: with Odin dev-2026-10 the static-library link fails on Windows (see docs/milestones.md, M6), so the
