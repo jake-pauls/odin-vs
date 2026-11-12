@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Diagnostics;
 using Microsoft.VisualStudio.LanguageServer.Client;
-using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Microsoft.VisualStudio.Utilities;
 using Newtonsoft.Json.Linq;
@@ -56,15 +55,12 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
 
         // Every .odinproj in the solution contributes its collection (ols takes one set per process). A change in the project set
         // restarts ols through StopAsync/StartAsync, which lands here again.
-        OdinSolutionWatcher watcher = OdinSolutionWatcher.Instance;
-        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(token);
-        watcher.Start();
-        OdinSolutionCollectionsResult collections = await watcher.ComputeAsync(token);
-        watcher.MarkStarted(collections);
+        OdinCollectionRegistry registry = OdinCollectionRegistry.Instance;
+        OdinSolutionCollectionsResult collections = registry.Current();
         if (!m_Subscribed)
         {
             m_Subscribed = true;
-            watcher.CollectionsChanged += () => _ = RestartAsync();
+            registry.CollectionsChanged += () => _ = RestartAsync();
         }
 
         foreach (OdinReferenceProblem problem in collections.Problems)

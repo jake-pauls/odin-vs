@@ -5,79 +5,41 @@ namespace OdinVS.Core.Tests;
 [TestClass]
 public sealed class OdinSolutionCollectionsTests
 {
-    private static string Project(string folder, string name, string body = "")
-    {
-        string directory = Path.Combine(folder, name);
-        Directory.CreateDirectory(directory);
-        string file = Path.Combine(directory, name + ".odinproj");
-        File.WriteAllText(file, $"<Project Sdk=\"Odin.Sdk/0.5.0-local\"><PropertyGroup>{body}</PropertyGroup></Project>");
-        return file;
-    }
-
-    private static string NewFolder() => Directory.CreateTempSubdirectory("odinvs-sc").FullName;
+    private static OdinProjectCollection Project(string name, string collection, string root) =>
+        new(@"C:\s\" + name + @"\" + name + ".odinproj", collection, root);
 
     [TestMethod]
-    public void EveryProjectGetsACollectionNamedAfterItAtItsFolder()
+    public void EveryProjectGetsItsCollectionSortedByProjectPath()
     {
-        string folder = NewFolder();
-        string a = Project(folder, "A");
-        string b = Project(folder, "B");
-        OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([b, a]);
-        CollectionAssert.AreEqual(
-            new[] { "A", "B" },
-            result.Collections.Select(c => c.Key).ToArray());
-        Assert.AreEqual(Path.Combine(folder, "A"), result.Collections[0].Value);
+        OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([Project("B", "B", @"C:\s\B"), Project("A", "A", @"C:\s\A\")]);
+        CollectionAssert.AreEqual(new[] { "A", "B" }, result.Collections.Select(c => c.Key).ToArray());
+        Assert.AreEqual(@"C:\s\A", result.Collections[0].Value, "a trailing slash is trimmed");
         Assert.IsEmpty(result.Problems);
-    }
-
-    [TestMethod]
-    public void NameAndRootOverridesAreRead()
-    {
-        string folder = NewFolder();
-        string a = Project(folder, "A", "<OdinCollectionName>core</OdinCollectionName><OdinCollectionRoot>src</OdinCollectionRoot>");
-        OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([a]);
-        Assert.AreEqual("core", result.Collections.Single().Key);
-        Assert.AreEqual(Path.Combine(folder, "A", "src"), result.Collections.Single().Value);
     }
 
     [TestMethod]
     public void TwoProjectsWithTheSameNameAreReportedAndTheFirstWins()
     {
-        string folder = NewFolder();
-        string a = Project(folder, "A", "<OdinCollectionName>dup</OdinCollectionName>");
-        string b = Project(folder, "B", "<OdinCollectionName>dup</OdinCollectionName>");
-        OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([a, b]);
-        Assert.AreEqual("dup", result.Collections.Single().Key);
+        OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([Project("B", "dup", @"C:\s\B"), Project("A", "dup", @"C:\s\A")]);
+        Assert.AreEqual(@"C:\s\A", result.Collections.Single().Value);
         Assert.AreEqual(OdinSolutionCollections.DuplicateCode, result.Problems.Single().Code);
         StringAssert.Contains(result.Problems.Single().Message, "dup");
+        StringAssert.Contains(result.Problems.Single().Message, "Give each project a different OdinCollectionName");
     }
 
     [TestMethod]
-    public void AnUnevaluableValueFallsBackToTheDefaultAndIsReported()
+    public void TheSameNameAtTheSameRootIsNotACollision()
     {
-        string folder = NewFolder();
-        string a = Project(folder, "A", "<OdinCollectionName>$(Something)</OdinCollectionName>");
-        OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([a]);
-        Assert.AreEqual("A", result.Collections.Single().Key);
-        Assert.AreEqual(OdinSolutionCollections.UnreadableCode, result.Problems.Single().Code);
+        OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([Project("A", "x", @"C:\s\shared"), Project("B", "x", @"c:\S\shared\")]);
+        Assert.HasCount(1, result.Collections);
+        Assert.IsEmpty(result.Problems);
     }
 
     [TestMethod]
-    public void AnUnreadableProjectFileFallsBackToTheDefaultAndIsReported()
+    public void NoProjectsGiveNoCollections()
     {
-        string folder = NewFolder();
-        string a = Project(folder, "A");
-        File.WriteAllText(a, "<Project");
-        OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([a]);
-        Assert.AreEqual("A", result.Collections.Single().Key);
-        Assert.AreEqual(OdinSolutionCollections.UnreadableCode, result.Problems.Single().Code);
-    }
-
-    [TestMethod]
-    public void ProjectNameMacrosAreSubstituted()
-    {
-        string folder = NewFolder();
-        string a = Project(folder, "A", "<OdinCollectionName>$(MSBuildProjectName)_x</OdinCollectionName>");
-        Assert.AreEqual("A_x", OdinSolutionCollections.Compute([a]).Collections.Single().Key);
+        OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([]);
+        Assert.IsEmpty(result.Collections);
+        Assert.IsEmpty(result.Problems);
     }
 }

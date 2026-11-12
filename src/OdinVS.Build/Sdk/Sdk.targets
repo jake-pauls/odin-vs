@@ -193,6 +193,9 @@
     <PropertyPageSchema Include="$(OdinRulesDir)OdinGeneral.BrowseObject.xaml">
       <Context>BrowseObject</Context>
     </PropertyPageSchema>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinCollections.xaml">
+      <Context>Project</Context>
+    </PropertyPageSchema>
     <!-- Debug selection: VS's own DebuggerGeneralProperties rule (holds DebuggerFlavor) plus our debugger rule. -->
     <PropertyPageSchema Include="$(MSBuildExtensionsPath)\Microsoft\VisualStudio\Managed\DebuggerGeneral.xaml">
       <Context>Project</Context>

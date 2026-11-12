@@ -47,19 +47,7 @@ public sealed class OdinVSPackage : AsyncPackage
         }
 
         // Collection-name collisions are found from the solution's projects, whether or not an .odin file was opened yet.
-        OdinSolutionWatcher.Instance.Start();
-        OdinSolutionWatcher.Instance.ProblemsChanged += () => JoinableTaskFactory.RunAsync(() => RefreshBarAsync(DisposalToken)).Task.Forget();
-        JoinableTaskFactory.RunAsync(async () =>
-        {
-            try
-            {
-                await OdinSolutionWatcher.Instance.ComputeAsync(DisposalToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                m_Log.Write($"could not read the solution's Odin collections: {ex}. Collision warnings are unavailable until the solution changes.");
-            }
-        }).Task.Forget();
+        OdinCollectionRegistry.Instance.ProblemsChanged += () => JoinableTaskFactory.RunAsync(() => RefreshBarAsync(DisposalToken)).Task.Forget();
     }
 
     private async Task RefreshBarAsync(CancellationToken cancellationToken)
@@ -81,7 +69,7 @@ public sealed class OdinVSPackage : AsyncPackage
     // Tool warnings (missing odin/ols, version mismatch) and collection problems (name collisions) share one bar.
     private string? CombinedText()
     {
-        IEnumerable<string> parts = m_ToolWarnings.Concat(OdinSolutionWatcher.Instance.Problems.Select(p => $"{p.Code}: {p.Message}"));
+        IEnumerable<string> parts = m_ToolWarnings.Concat(OdinCollectionRegistry.Instance.Problems.Select(p => $"{p.Code}: {p.Message}"));
         string text = string.Join(" ", parts);
         return text.Length == 0 ? null : text;
     }
