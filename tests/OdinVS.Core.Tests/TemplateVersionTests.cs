@@ -23,6 +23,14 @@ public sealed class TemplateVersionTests
     }
 
     [TestMethod]
+    public void LibraryTemplateUsesThePackedSdkVersionAndBuildsADll()
+    {
+        string template = File.ReadAllText(Path.Combine(RepoPaths.Root, "src", "OdinVS", "Templates", "ProjectTemplates", "OdinDynamicLibrary", "OdinLib.odinproj"));
+        Assert.Contains($"Sdk=\"Odin.Sdk/{PackedVersion()}\"", template);
+        Assert.Contains("<OdinOutputType>Dll</OdinOutputType>", template);
+    }
+
+    [TestMethod]
     public void SampleProjectsUseThePackedSdkVersion()
     {
         string[] projects = Directory.GetFiles(Path.Combine(RepoPaths.Root, "tests", "samples"), "*.odinproj", SearchOption.AllDirectories);

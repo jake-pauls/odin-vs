@@ -65,9 +65,17 @@ internal sealed class MsBuildSandbox
     }
 
     // Copies several samples as siblings (workDirectory\<sample>) so their relative ProjectReference paths resolve; returns workDirectory.
-    public string CopySamples(params string[] samples)
+    public string CopySamples(params string[] samples) => CopySamplesUnder(null, samples);
+
+    // The same, inside a subfolder of the scratch folder (for example one with a space in its name).
+    public string CopySamplesUnder(string? folder, params string[] samples)
     {
         string workDirectory = NewWorkDirectory();
+        if (folder is not null)
+        {
+            workDirectory = Path.Combine(workDirectory, folder);
+        }
+
         foreach (string sample in samples)
         {
             CopySampleInto(sample, Path.Combine(workDirectory, sample));

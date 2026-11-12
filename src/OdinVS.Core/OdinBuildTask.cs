@@ -12,6 +12,7 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
     public const string WarningCode = "ODIN0002";
     public const string FailedWithoutDiagnosticsCode = "ODIN0100";
     public const string OdinNotFoundCode = "ODIN0101";
+    public const string LinkPathCode = "ODIN0107";
 
     private readonly object m_Lock = new();
     private Process? m_Process;
@@ -25,6 +26,12 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
 
     [Required]
     public string OutputPath { get; set; } = string.Empty;
+
+    // Folder odin runs in; relative library paths (see OdinBuildArguments.ToLinkerPath) are relative to it. Empty keeps the current one.
+    public string WorkingDirectory { get; set; } = string.Empty;
+
+    // Exe, Dll or Lib (the project's OdinOutputType).
+    public string OutputType { get; set; } = "Exe";
 
     public bool Debug { get; set; }
 
@@ -44,13 +51,25 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
             return false;
         }
 
+        foreach (ITaskItem linkInput in LinkInputs)
+        {
+            string linkerPath = OdinBuildArguments.ToLinkerPath(linkInput.ItemSpec, WorkingDirectory);
+            if (OdinBuildArguments.HasWhitespace(linkerPath))
+            {
+                Log.LogError(null, LinkPathCode, null, linkInput.ItemSpec, 0, 0, 0, 0, "odin splits -extra-linker-flags on spaces, so the library '{0}' cannot be linked from a path with spaces. Move the referenced project's output (or this project) to a folder without spaces, or set OutDir on the referenced project.", linkInput.ItemSpec);
+                return false;
+            }
+        }
+
         OdinBuildOptions options = new(
             PackageDirectory,
             OutputPath,
             Debug,
             Collections.Select(c => new KeyValuePair<string, string>(c.ItemSpec, c.GetMetadata("Path"))),
             LinkInputs.Select(l => l.ItemSpec),
-            ExtraArguments);
+            ExtraArguments,
+            OutputType,
+            WorkingDirectory);
         string arguments = OdinBuildArguments.Build(options);
         Log.LogMessage(MessageImportance.High, "ODIN: {0} {1}", odin, arguments);
 
@@ -185,6 +204,11 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
             StandardOutputEncoding = utf8,
             StandardErrorEncoding = utf8,
         };
+        if (WorkingDirectory.Length > 0)
+        {
+            startInfo.WorkingDirectory = WorkingDirectory;
+        }
+
         using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException("Process.Start returned null");
         lock (m_Lock)
         {

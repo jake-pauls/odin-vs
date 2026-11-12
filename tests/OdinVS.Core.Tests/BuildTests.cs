@@ -121,12 +121,43 @@ public sealed class OdinBuildArgumentsTests
     }
 
     [TestMethod]
-    public void LinkInputsGoToTheLinkerAsOneQuotedFlag()
+    public void LinkInputsGoToTheLinkerWithTheirFoldersAsLibPaths()
     {
-        OdinBuildOptions options = new(@"C:\p\src", @"C:\p\p.exe", false, [], [@"C:\n\a.lib", @"C:\my libs\b.lib"], "");
+        OdinBuildOptions options = new(@"C:\p\src", @"C:\p\p.exe", false, [], [@"C:\n\a.lib", @"C:\n\b.lib", @"C:\m\c.lib"], "");
         string arguments = OdinBuildArguments.Build(options);
-        Assert.Contains("\"-extra-linker-flags:C:\\n\\a.lib \\\"C:\\my libs\\b.lib\\\"\"", arguments);
+        Assert.Contains("\"-extra-linker-flags:/LIBPATH:C:\\n /LIBPATH:C:\\m /DEFAULTLIB:a.lib /DEFAULTLIB:b.lib /DEFAULTLIB:c.lib\" ", arguments);
         Assert.IsLessThan(arguments.IndexOf("-json-errors", StringComparison.Ordinal), arguments.IndexOf("-extra-linker-flags", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void ALinkInputWithSpacesIsPassedRelativeToTheWorkingDirectory()
+    {
+        OdinBuildOptions options = new(@"C:\my work\p\src", @"C:\my work\p\p.exe", false, [], [@"C:\my work\lib\bin\b.lib"], "", "Exe", @"C:\my work\p");
+        string arguments = OdinBuildArguments.Build(options);
+        Assert.Contains("\"-extra-linker-flags:/LIBPATH:..\\lib\\bin /DEFAULTLIB:b.lib\" ", arguments);
+    }
+
+    [TestMethod]
+    public void ALinkInputThatStaysSpacedAfterRelativizingIsReported()
+    {
+        Assert.IsTrue(OdinBuildArguments.HasWhitespace(OdinBuildArguments.ToLinkerPath(@"C:\a b\x.lib", @"D:\p")));
+        Assert.IsTrue(OdinBuildArguments.HasWhitespace(OdinBuildArguments.ToLinkerPath(@"C:\a b\x.lib", @"C:\p")));
+    }
+
+    [TestMethod]
+    [DataRow("Dll", "-build-mode:dll")]
+    [DataRow("dll", "-build-mode:dll")]
+    [DataRow("Lib", "-build-mode:lib")]
+    public void OutputTypeSelectsTheBuildMode(string outputType, string flag)
+    {
+        OdinBuildOptions options = new(@"C:\p\src", @"C:\p\p.dll", false, [], [], "", outputType);
+        Assert.Contains(" " + flag + " ", OdinBuildArguments.Build(options) + " ");
+    }
+
+    [TestMethod]
+    public void AnExecutableAddsNoBuildMode()
+    {
+        Assert.DoesNotContain("-build-mode", OdinBuildArguments.Build(Options(false)));
     }
 
     [TestMethod]

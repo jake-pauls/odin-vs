@@ -1,0 +1,21 @@
+<VSTemplate Version="3.0.0" Type="Project" xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
+  <TemplateData>
+    <Name>Odin Dynamic Library (DLL)</Name>
+    <Description>An Odin DLL (OdinOutputType Dll). Other Odin projects link against it through a ProjectReference with ReferenceKind="Link".</Description>
+    <ProjectType>Odin</ProjectType>
+    <SortOrder>1010</SortOrder>
+    <CreateNewFolder>true</CreateNewFolder>
+    <DefaultName>OdinLib</DefaultName>
+    <ProvideDefaultName>true</ProvideDefaultName>
+    <LocationField>Enabled</LocationField>
+    <EnableLocationBrowseButton>true</EnableLocationBrowseButton>
+    <CreateInPlace>true</CreateInPlace>
+  </TemplateData>
+  <TemplateContent>
+    <Project TargetFileName="$projectname$.odinproj" File="OdinLib.odinproj" ReplaceParameters="true">
+      <Folder Name="src" TargetFolderName="src">
+        <ProjectItem ReplaceParameters="true" TargetFileName="lib.odin">lib.odin</ProjectItem>
+      </Folder>
+    </Project>
+  </TemplateContent>
+</VSTemplate>

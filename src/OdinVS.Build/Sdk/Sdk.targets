@@ -43,7 +43,12 @@
     <OutDir Condition="'$(OutDir)' == ''">$(MSBuildProjectDirectory)\bin\$(Configuration)\</OutDir>
     <OutDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(OutDir)'))</OutDir>
     <TargetName Condition="'$(TargetName)' == ''">$(MSBuildProjectName)</TargetName>
-    <TargetPath Condition="'$(TargetPath)' == ''">$(OutDir)$(TargetName).exe</TargetPath>
+    <!-- What the project builds: Exe (default), Dll or Lib (static library). Selects -build-mode: and the output extension. -->
+    <OdinOutputType Condition="'$(OdinOutputType)' == ''">Exe</OdinOutputType>
+    <TargetExt Condition="'$(TargetExt)' == '' and '$(OdinOutputType)' == 'Dll'">.dll</TargetExt>
+    <TargetExt Condition="'$(TargetExt)' == '' and '$(OdinOutputType)' == 'Lib'">.lib</TargetExt>
+    <TargetExt Condition="'$(TargetExt)' == ''">.exe</TargetExt>
+    <TargetPath Condition="'$(TargetPath)' == ''">$(OutDir)$(TargetName)$(TargetExt)</TargetPath>
     <TargetPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(TargetPath)'))</TargetPath>
     <!-- odin writes the PDB next to -out: with the same name, so it follows TargetPath and is not a separate setting. -->
     <_OdinPdbPath>$([System.IO.Path]::ChangeExtension('$(TargetPath)', '.pdb'))</_OdinPdbPath>
@@ -61,6 +66,8 @@
   <!-- A -debug build also produces a PDB, so a missing PDB must trigger a rebuild. -->
   <ItemGroup>
     <_OdinPdbOutput Include="$(_OdinPdbPath)" Condition="'$(OdinDebug)' == 'true'" />
+    <!-- A DLL build also writes its import library next to it. -->
+    <_OdinImportLibOutput Include="$([System.IO.Path]::ChangeExtension('$(TargetPath)', '.lib'))" Condition="'$(OdinOutputType)' == 'Dll'" />
   </ItemGroup>
 
   <!-- References. MSBuild/VS order the builds through ProjectReference; the Core resolver (OdinReferenceResolver) does the rest: transitive
@@ -74,6 +81,9 @@
     <OdinCollectionRoot Condition="'$(OdinCollectionRoot)' == ''">$(MSBuildProjectDirectory)</OdinCollectionRoot>
     <OdinCollectionRoot>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(OdinCollectionRoot)'))</OdinCollectionRoot>
     <!-- File that Link references of this project link against; empty for projects that produce none. -->
+    <!-- A Dll is linked through the import library odin writes next to it; a Lib is its own link input. -->
+    <OdinLinkLibrary Condition="'$(OdinLinkLibrary)' == '' and '$(OdinOutputType)' == 'Dll'">$([System.IO.Path]::ChangeExtension('$(TargetPath)', '.lib'))</OdinLinkLibrary>
+    <OdinLinkLibrary Condition="'$(OdinLinkLibrary)' == '' and '$(OdinOutputType)' == 'Lib'">$(TargetPath)</OdinLinkLibrary>
     <OdinLinkLibrary Condition="'$(OdinLinkLibrary)' == ''"></OdinLinkLibrary>
   </PropertyGroup>
 
@@ -146,19 +156,32 @@
 
   <!-- Inputs are the project's own file list, the sources of Source-referenced projects (a consumer recompiles them), Link inputs and
        the project file (a flag change in the .odinproj must rebuild; a /p: override does not). -->
-  <Target Name="Build" DependsOnTargets="OdinResolveReferences" Inputs="@(OdinCompile);@(OdinReferencedSource);@(OdinLinkInput);$(MSBuildProjectFullPath)" Outputs="$(TargetPath);@(_OdinPdbOutput)">
+  <Target Name="_OdinCheckOutputType">
+    <Error Condition="'$(OdinOutputType)' != 'Exe' and '$(OdinOutputType)' != 'Dll' and '$(OdinOutputType)' != 'Lib'"
+           Code="ODIN0106" Text="OdinOutputType '$(OdinOutputType)' is not valid. Use Exe, Dll or Lib." />
+  </Target>
+
+  <Target Name="Build" DependsOnTargets="_OdinCheckOutputType;OdinResolveReferences" Inputs="@(OdinCompile);@(OdinReferencedSource);@(OdinLinkInput);$(MSBuildProjectFullPath)" Outputs="$(TargetPath);@(_OdinPdbOutput);@(_OdinImportLibOutput)">
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))" />
     <OdinBuild OdinExe="$(OdinExe)"
                PackageDirectory="$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(OdinPackageDir)'))"
+               WorkingDirectory="$(MSBuildProjectDirectory)"
                OutputPath="$(TargetPath)"
+               OutputType="$(OdinOutputType)"
                Debug="$(OdinDebug)"
                Collections="@(OdinCollection)"
                LinkInputs="@(OdinLinkInput)"
                ExtraArguments="$(OdinExtraArgs)" />
+    <!-- A DLL linked through its import library must sit next to the exe at run time (what a C++ project reference does as "copy local"). -->
+    <ItemGroup>
+      <_OdinRuntimeDll Include="@(OdinLinkInput->WithMetadataValue('Extension', '.lib')->'%(RootDir)%(Directory)%(Filename).dll')" />
+      <_OdinRuntimeDll Remove="@(_OdinRuntimeDll)" Condition="!Exists('%(_OdinRuntimeDll.FullPath)')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OdinRuntimeDll)" DestinationFolder="$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))" SkipUnchangedFiles="true" Condition="'@(_OdinRuntimeDll)' != ''" />
   </Target>
 
   <Target Name="Clean">
-    <Delete Files="$(TargetPath);$(_OdinPdbPath)" />
+    <Delete Files="$(TargetPath);$(_OdinPdbPath);@(_OdinImportLibOutput)" />
   </Target>
 
   <Target Name="Rebuild" DependsOnTargets="Clean;Build" />
