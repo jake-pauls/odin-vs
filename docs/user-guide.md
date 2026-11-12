@@ -134,7 +134,9 @@ Build order comes from MSBuild and Visual Studio (`ProjectReference`); the SDK a
 
 In Visual Studio: *Project > Add Project Reference...* (or the Add Reference command on the **Dependencies** node) opens the Reference Manager's Projects tab; the new `ProjectReference` is written to the `.odinproj` when the project is saved or built. Visual Studio rejects a reference that would close a loop (*"Adding this project as a reference would cause a circular dependency"*). On the command line a loop fails the build with MSBuild's own `MSB4006` (circular dependency) listing the projects.
 
-Two referenced projects must not use the same collection name with different roots (`ODIN0103`): set `OdinCollectionName` in one of them.
+Two referenced projects must not use the same collection name with different roots (`ODIN0103`): give each a different `OdinCollectionName`, or remove the one that makes them match.
+
+**IntelliSense across projects:** the language server (ols) is given one collection per `.odinproj` in the solution, referenced or not, so `import "name:pkg"` resolves in the editor for every project. ols takes one collection set per process, so two projects with the same name collide (info bar `ODIN0103`; the first project by path keeps the name). The set is read when the solution opens and when a project is added, removed, loaded or unloaded (ols restarts then). **Editing `OdinCollectionName` or `OdinCollectionRoot` in an open solution is not picked up: close and reopen the solution** (Visual Studio itself does not need to restart).
 
 **Linking an Odin DLL (checked with real odin, command line):** give the library project `<OdinOutputType>Dll</OdinOutputType>` and reference it from the executable with `ReferenceKind="Link"`:
 
@@ -150,7 +152,7 @@ foreign { dll_mul :: proc "c" (a, b: i32) -> i32 --- }
 
 Samples: `tests/samples/LinkApp`, `LinkDll` (and `LinkLib`, the static one) in `OdinLinking.sln`. A project folder with spaces is fine (the library is passed relative to the project), but the library path itself cannot have spaces after that (`ODIN0107`).
 
-**Known gaps** (see `docs/milestones.md`, M6): `OdinOutputType` `Lib` (static library) fails with the installed Odin; `Link` to a C/C++ `.vcxproj` is not built or tested with a real C++ project (only an Odin DLL has been linked); the language server (ols) is not yet given the collections of referenced projects, so hover, completion and go-to-definition across projects do not work yet (the build itself resolves them).
+**Known gaps** (see `docs/milestones.md`, M6): `OdinOutputType` `Lib` (static library) fails with the installed Odin; `Link` to a C/C++ `.vcxproj` is not built or tested with a real C++ project (only an Odin DLL has been linked); editing a project's collection properties needs the solution reopened before IntelliSense sees it (see above).
 
 ## Projects in Visual Studio
 
@@ -232,11 +234,12 @@ Odin does not give its errors codes, so odin-vs assigns them.
 | `ODIN0100` | error | `odin build` failed (non-zero exit) but gave no error list, such as a link failure or crash | The message carries whatever Odin printed |
 | `ODIN0101` | error | `odin.exe` was not found | Install Odin, add it to `PATH`, or set `OdinExe` |
 | `ODIN0102` | error | A circular project reference, reported with its path (`A -> B -> A`) | Raised by the reference resolver. Today MSBuild's own `MSB4006` fires first on the command line, and Visual Studio's Add Reference refuses the loop, so this code is not seen yet |
-| `ODIN0103` | error | Two referenced projects use the same collection name with different roots | Set `OdinCollectionName` in one of them |
+| `ODIN0103` | error (build); warning (info bar, log) | Two referenced projects use the same collection name with different roots. In the editor it is raised for any two projects in the solution, referenced or not, because the language server gets every project's collection | Give each project a different `OdinCollectionName`, or remove the one that makes them match |
 | `ODIN0104` | error | A referenced project could not be read | Check that the file exists and loads |
 | `ODIN0105` | error | A `Link` reference to a project that produces no library | Use a `Source` reference, or reference a library project |
 | `ODIN0106` | error | `OdinOutputType` is not `Exe`, `Dll` or `Lib` | Fix the value in the `.odinproj` |
 | `ODIN0107` | error | A library to link has a path with spaces that cannot be written relative to the project folder | Odin splits `-extra-linker-flags` on spaces; move the project or set `OutDir` so the library path has none |
+| `ODIN0108` | warning (info bar, log) | The language server could not read a project's `OdinCollectionName`/`OdinCollectionRoot` (unreadable file, or a property other than `$(MSBuildProjectName)`/`$(MSBuildProjectDirectory)`) | IntelliSense uses the default name and folder for that project; builds are not affected |
 | `ODINPKG1` | warning | Packing `Odin.Sdk` with `scripts\pack-sdk.ps1` | Reminder that the package is local only and must not be published; not a build diagnostic |
 | `ols.<code>` | error | A diagnostic from the ols language server while editing (for example `ols.checker`, `ols.Syntax`) | Appears on save; not part of the build |
 

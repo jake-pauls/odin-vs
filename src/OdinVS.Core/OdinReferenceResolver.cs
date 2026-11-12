@@ -147,7 +147,7 @@ public static class OdinReferenceResolver
             {
                 if (!string.Equals(owner, target.CollectionRoot, StringComparison.OrdinalIgnoreCase))
                 {
-                    problems.Add(new OdinReferenceProblem(DuplicateCollectionCode, $"collection name '{target.CollectionName}' is used by two projects ('{owner}' and '{target.CollectionRoot}'). Set OdinCollectionName in one of them."));
+                    problems.Add(new OdinReferenceProblem(DuplicateCollectionCode, $"collection name '{target.CollectionName}' is used by two projects ('{owner}' and '{target.CollectionRoot}'). Give each project a different OdinCollectionName (the default is the project name), or remove the OdinCollectionName that makes them match."));
                 }
             }
             else

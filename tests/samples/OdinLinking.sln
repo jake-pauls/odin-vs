@@ -8,7 +8,7 @@ Project("{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}") = "LinkDll", "LinkDll\LinkDll.
 EndProject
 Project("{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}") = "LinkLib", "LinkLib\LinkLib.odinproj", "{A3333333-0000-4000-8000-000000000003}"
 EndProject
-Project("{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}") = "OdinApp1", "C:\Users\jakep\source\repos\OdinApp1\OdinApp1\OdinApp1.odinproj", "{A6AEA16B-7C2E-4A0E-B4A6-BF952D5ABB64}"
+Project("{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}") = "OdinTemplateDll", "OdinTemplateDll\OdinTemplateDll.odinproj", "{E3285BFE-9CD6-49FE-BDCE-C860BFF63A6F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -28,10 +28,10 @@ Global
 		{A3333333-0000-4000-8000-000000000003}.Debug|x64.Build.0 = Debug|x64
 		{A3333333-0000-4000-8000-000000000003}.Release|x64.ActiveCfg = Release|x64
 		{A3333333-0000-4000-8000-000000000003}.Release|x64.Build.0 = Release|x64
-		{A6AEA16B-7C2E-4A0E-B4A6-BF952D5ABB64}.Debug|x64.ActiveCfg = Debug|x64
-		{A6AEA16B-7C2E-4A0E-B4A6-BF952D5ABB64}.Debug|x64.Build.0 = Debug|x64
-		{A6AEA16B-7C2E-4A0E-B4A6-BF952D5ABB64}.Release|x64.ActiveCfg = Release|x64
-		{A6AEA16B-7C2E-4A0E-B4A6-BF952D5ABB64}.Release|x64.Build.0 = Release|x64
+		{E3285BFE-9CD6-49FE-BDCE-C860BFF63A6F}.Debug|x64.ActiveCfg = Debug|x64
+		{E3285BFE-9CD6-49FE-BDCE-C860BFF63A6F}.Debug|x64.Build.0 = Debug|x64
+		{E3285BFE-9CD6-49FE-BDCE-C860BFF63A6F}.Release|x64.ActiveCfg = Release|x64
+		{E3285BFE-9CD6-49FE-BDCE-C860BFF63A6F}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

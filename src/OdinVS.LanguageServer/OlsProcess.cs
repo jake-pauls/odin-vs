@@ -14,7 +14,7 @@ public sealed class OlsProcess(Log log)
     // Lives for the VS process; the OS closes the handle on exit, which kills ols. Null if the job could not be created.
     private static readonly Lazy<KillOnCloseJob?> m_Job = new(CreateJob);
 
-    internal StartedOls? Start()
+    internal StartedOls? Start(IReadOnlyList<KeyValuePair<string, string>> collections)
     {
         string extensionDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
         ResolvedTools tools = new ToolResolver(new ToolLocator(File.Exists))
@@ -73,8 +73,7 @@ public sealed class OlsProcess(Log log)
         process.BeginErrorReadLine();
         log.Write($"ols started (pid {process.Id}) from {ols} using odin {odin}");
 
-        // Defaults for now; a later milestone fills these from .odinproj properties.
-        return new StartedOls(process, odin, new OlsSettings(odin, [], []));
+        return new StartedOls(process, odin, new OlsSettings(odin, [], collections));
     }
 
     public string? ReadOdinVersion(string odin)

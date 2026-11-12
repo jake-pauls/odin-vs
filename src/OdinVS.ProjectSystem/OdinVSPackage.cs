@@ -23,6 +23,7 @@ public sealed class OdinVSPackage : AsyncPackage
 
     private readonly Log m_Log = Log.Default;
     private int m_Checking;
+    private IReadOnlyList<string> m_ToolWarnings = [];
     private IVsInfoBarHost? m_Host;
     private IVsInfoBarUIElement? m_Bar;
 
@@ -44,6 +45,45 @@ public sealed class OdinVSPackage : AsyncPackage
         {
             StartCheck(extensionDirectory);
         }
+
+        // Collection-name collisions are found from the solution's projects, whether or not an .odin file was opened yet.
+        OdinSolutionWatcher.Instance.Start();
+        OdinSolutionWatcher.Instance.ProblemsChanged += () => JoinableTaskFactory.RunAsync(() => RefreshBarAsync(DisposalToken)).Task.Forget();
+        JoinableTaskFactory.RunAsync(async () =>
+        {
+            try
+            {
+                await OdinSolutionWatcher.Instance.ComputeAsync(DisposalToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                m_Log.Write($"could not read the solution's Odin collections: {ex}. Collision warnings are unavailable until the solution changes.");
+            }
+        }).Task.Forget();
+    }
+
+    private async Task RefreshBarAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ReplaceInfoBarAsync(CombinedText(), cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // VS is shutting down; there is nothing to show.
+        }
+        catch (Exception ex)
+        {
+            m_Log.Write($"could not update the Odin info bar: {ex}. Problems are in this log.");
+        }
+    }
+
+    // Tool warnings (missing odin/ols, version mismatch) and collection problems (name collisions) share one bar.
+    private string? CombinedText()
+    {
+        IEnumerable<string> parts = m_ToolWarnings.Concat(OdinSolutionWatcher.Instance.Problems.Select(p => $"{p.Code}: {p.Message}"));
+        string text = string.Join(" ", parts);
+        return text.Length == 0 ? null : text;
     }
 
     // ShowToolWarningsAsync catches everything but cancellation, so the task needs no further observation.
@@ -61,7 +101,8 @@ public sealed class OdinVSPackage : AsyncPackage
         {
             IReadOnlyList<string> warnings = await Task.Run(() => CollectWarnings(extensionDirectory), cancellationToken);
             m_Log.Write(warnings.Count == 0 ? "tool check: odin and ols found, versions match" : $"tool check: {warnings.Count} warning(s)");
-            await ReplaceInfoBarAsync(warnings.Count == 0 ? null : string.Join(" ", warnings), cancellationToken);
+            m_ToolWarnings = warnings;
+            await ReplaceInfoBarAsync(CombinedText(), cancellationToken);
         }
         catch (OperationCanceledException)
         {

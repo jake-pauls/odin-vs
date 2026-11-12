@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Diagnostics;
 using Microsoft.VisualStudio.LanguageServer.Client;
+using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Microsoft.VisualStudio.Utilities;
 using Newtonsoft.Json.Linq;
@@ -19,6 +20,7 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
     private readonly OlsProcess m_Launcher;
     private readonly object m_Gate = new();
     private StartedOls? m_Started;
+    private bool m_Subscribed;
 
     public OdinLanguageClient()
     {
@@ -45,16 +47,33 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
 
     public event AsyncEventHandler<EventArgs>? StartAsync;
 
-#pragma warning disable CS0067 // required by ILanguageClient; we never request a stop
     public event AsyncEventHandler<EventArgs>? StopAsync;
-#pragma warning restore CS0067
 
     public async Task<Connection?> ActivateAsync(CancellationToken token)
     {
         await Task.Yield();
         StopProcess();
 
-        StartedOls? next = m_Launcher.Start();
+        // Every .odinproj in the solution contributes its collection (ols takes one set per process). A change in the project set
+        // restarts ols through StopAsync/StartAsync, which lands here again.
+        OdinSolutionWatcher watcher = OdinSolutionWatcher.Instance;
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(token);
+        watcher.Start();
+        OdinSolutionCollectionsResult collections = await watcher.ComputeAsync(token);
+        watcher.MarkStarted(collections);
+        if (!m_Subscribed)
+        {
+            m_Subscribed = true;
+            watcher.CollectionsChanged += () => _ = RestartAsync();
+        }
+
+        foreach (OdinReferenceProblem problem in collections.Problems)
+        {
+            m_Log.Write($"{problem.Code}: {problem.Message}");
+        }
+
+        m_Log.Write($"ols collections: {(collections.Collections.Count == 0 ? "(none)" : string.Join(", ", collections.Collections.Select(c => c.Key)))}");
+        StartedOls? next = m_Launcher.Start(collections.Collections);
         lock (m_Gate)
         {
             m_Started = next;
@@ -69,6 +88,27 @@ public sealed class OdinLanguageClient : ILanguageClient, ILanguageClientCustomM
         string olsPath = next.Process.StartInfo.FileName;
         _ = Task.Run(() => CheckVersions(olsPath, odinPath), token);
         return new Connection(next.Process.StandardOutput.BaseStream, next.Process.StandardInput.BaseStream);
+    }
+
+    private async Task RestartAsync()
+    {
+        try
+        {
+            m_Log.Write("the solution's Odin collections changed; restarting ols");
+            if (StopAsync is not null)
+            {
+                await StopAsync.InvokeAsync(this, EventArgs.Empty);
+            }
+
+            if (StartAsync is not null)
+            {
+                await StartAsync.InvokeAsync(this, EventArgs.Empty);
+            }
+        }
+        catch (Exception ex)
+        {
+            m_Log.Write($"could not restart ols after a collection change: {ex}. Reopen an .odin file or the solution to start it again.");
+        }
     }
 
     public Task OnLoadedAsync()
