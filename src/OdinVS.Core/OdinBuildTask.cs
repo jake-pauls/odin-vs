@@ -31,6 +31,9 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
     // Items whose identity is the collection name and whose Path metadata is the directory (consumers write import "name:pkg").
     public ITaskItem[] Collections { get; set; } = [];
 
+    // Library files from Link references; each item's identity is the full path.
+    public ITaskItem[] LinkInputs { get; set; } = [];
+
     public string ExtraArguments { get; set; } = string.Empty;
 
     public override bool Execute()
@@ -46,6 +49,7 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
             OutputPath,
             Debug,
             Collections.Select(c => new KeyValuePair<string, string>(c.ItemSpec, c.GetMetadata("Path"))),
+            LinkInputs.Select(l => l.ItemSpec),
             ExtraArguments);
         string arguments = OdinBuildArguments.Build(options);
         Log.LogMessage(MessageImportance.High, "ODIN: {0} {1}", odin, arguments);

@@ -28,6 +28,18 @@
       <HintPath>$(VsExtensionsDir)VBCSharp\LanguageServices\InteractiveHost\Desktop\System.Collections.Immutable.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Same story for Microsoft.VisualStudio.Threading: CPS 18.x is built against 18.7, the VS SDK packages bring 17.14 (CS1705 once a CPS type that
+         touches threading is used). Compile against the copy VS ships in PublicAssemblies. -->
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Only" Version="17.14.15" ExcludeAssets="compile;runtime" />
+    <Reference Include="Microsoft.VisualStudio.Threading">
+      <HintPath>$(VsInstallRoot)\Common7\IDE\PublicAssemblies\Microsoft.VisualStudio.Threading.17.x\Microsoft.VisualStudio.Threading.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.6.0" ExcludeAssets="compile;runtime" />
+    <Reference Include="System.Threading.Tasks.Extensions">
+      <HintPath>$(VsInstallRoot)\Common7\IDE\PublicAssemblies\System.Threading.Tasks.Extensions.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="System.ComponentModel.Composition" />
   </ItemGroup>
   <ItemGroup>

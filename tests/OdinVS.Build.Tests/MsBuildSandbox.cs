@@ -58,13 +58,37 @@ internal sealed class MsBuildSandbox
     // Copies tests/samples/<sample> to a fresh directory next to a nuget.config that points only at the scratch feed.
     public string CopySample(string sample, string? parentFolder = null)
     {
+        string workDirectory = NewWorkDirectory();
+        string destination = Path.Combine(workDirectory, parentFolder ?? string.Empty, sample);
+        CopySampleInto(sample, destination);
+        return destination;
+    }
+
+    // Copies several samples as siblings (workDirectory\<sample>) so their relative ProjectReference paths resolve; returns workDirectory.
+    public string CopySamples(params string[] samples)
+    {
+        string workDirectory = NewWorkDirectory();
+        foreach (string sample in samples)
+        {
+            CopySampleInto(sample, Path.Combine(workDirectory, sample));
+        }
+
+        return workDirectory;
+    }
+
+    private string NewWorkDirectory()
+    {
         string workDirectory = Path.Combine(m_Root, "work", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workDirectory);
         File.WriteAllText(
             Path.Combine(workDirectory, "nuget.config"),
             $"""<configuration><packageSources><clear /><add key="scratch" value="{FeedDirectory}" /></packageSources></configuration>""");
+        return workDirectory;
+    }
+
+    private static void CopySampleInto(string sample, string destination)
+    {
         string source = Path.Combine(RepoRoot, "tests", "samples", sample);
-        string destination = Path.Combine(workDirectory, parentFolder ?? string.Empty, sample);
         foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
         {
             string relative = Path.GetRelativePath(source, file);
@@ -76,10 +100,7 @@ internal sealed class MsBuildSandbox
             Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(destination, relative))!);
             File.Copy(file, Path.Combine(destination, relative));
         }
-
-        return destination;
     }
-
     // Evaluates the project without building and prints the named item (JSON), the way a static evaluation sees it.
     public MsBuildResult GetItem(string projectDirectory, string projectFile, string item)
     {

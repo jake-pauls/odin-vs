@@ -5,6 +5,7 @@ internal sealed record OdinBuildOptions(
     string OutputPath,
     bool Debug,
     IEnumerable<KeyValuePair<string, string>> Collections,
+    IEnumerable<string> LinkInputs,
     string ExtraArguments);
 
 internal static class OdinBuildArguments
@@ -22,6 +23,13 @@ internal static class OdinBuildArguments
         foreach (KeyValuePair<string, string> collection in options.Collections)
         {
             arguments.Add(Quote($"-collection:{collection.Key}={collection.Value.TrimEnd('\\', '/')}"));
+        }
+
+        // Library files of Link references go to the linker as a whole. A path with spaces is quoted inside the flag value.
+        string[] linkInputs = options.LinkInputs.Select(path => path.IndexOfAny([' ', '\t']) < 0 ? path : "\"" + path + "\"").ToArray();
+        if (linkInputs.Length > 0)
+        {
+            arguments.Add("\"-extra-linker-flags:" + string.Join(" ", linkInputs).Replace("\"", "\\\"") + "\"");
         }
 
         arguments.Add("-json-errors");

@@ -1,0 +1,6 @@
+<Project Sdk="Odin.Sdk/0.4.0-local">
+  <ItemGroup>
+    <OdinCompile Include="src\**\*.odin" />
+    <ProjectReference Include="..\RefCycleA\RefCycleA.odinproj" />
+  </ItemGroup>
+</Project>
