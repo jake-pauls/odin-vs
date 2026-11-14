@@ -78,7 +78,8 @@ internal static class OdinBuildArguments
 
         // Segment by segment, not through Uri: a folder named "a#b", "50%" or "x[1]" would be escaped or cut by Uri.
         string[] from = Path.GetFullPath(workingDirectory).TrimEnd('\\', '/').Split('\\');
-        string[] to = Path.GetFullPath(path).Split('\\');
+        string fullPath = Path.GetFullPath(path);
+        string[] to = fullPath.Split('\\');
         int common = 0;
         while (common < from.Length && common < to.Length - 1 && string.Equals(from[common], to[common], StringComparison.OrdinalIgnoreCase))
         {
@@ -86,10 +87,10 @@ internal static class OdinBuildArguments
         }
 
         // Nothing in common: another drive, or (a UNC path starts with two empty segments, then server and share) another share.
-        int minimumShared = path.StartsWith(@"\\", StringComparison.Ordinal) ? 4 : 1;
+        int minimumShared = fullPath.StartsWith(@"\\", StringComparison.Ordinal) ? 4 : 1;
         if (common < minimumShared)
         {
-            return path;
+            return fullPath;
         }
 
         IEnumerable<string> segments = Enumerable.Repeat("..", from.Length - common).Concat(to.Skip(common));

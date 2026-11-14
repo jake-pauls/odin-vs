@@ -197,7 +197,7 @@
     <ItemGroup>
       <_OdinCopiedDll Include="@(_OdinRuntimeDll->'$(_OdinOutputDirectory)\%(Filename)%(Extension)')" />
     </ItemGroup>
-    <WriteLinesToFile File="$(_OdinCopiedListPath)" Lines="@(_OdinCopiedDll)" Overwrite="true" Condition="'@(_OdinCopiedDll)' != ''" />
+    <WriteLinesToFile File="$(_OdinCopiedListPath)" Lines="@(_OdinCopiedDll)" Overwrite="true" />
   </Target>
 
   <Target Name="Clean">

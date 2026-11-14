@@ -153,6 +153,11 @@ public sealed class OdinBuildArgumentsTests
     [DataRow(@"D:\my work\lib\b.lib", @"C:\my work\p", @"D:\my work\lib\b.lib")]
     [DataRow(@"\\srv\share a\lib\b.lib", @"\\other\share a\p", @"\\srv\share a\lib\b.lib")]
     [DataRow(@"\\srv\share a\lib\b.lib", @"\\srv\share a\p", @"..\lib\b.lib")]
+    [DataRow(@"//srv/share a/lib/b.lib", @"\\other\share a\p", @"\\srv\share a\lib\b.lib")]
+    [DataRow(@"C:\a b\x.lib", @"C:\a", @"..\a b\x.lib")]
+    [DataRow(@"C:/my work/lib/b.lib", @"C:\my work\p", @"..\lib\b.lib")]
+    [DataRow(@"C:\my work\p\..\lib\b.lib", @"C:\my work\p", @"..\lib\b.lib")]
+    [DataRow(@"C:\my work\b.lib", @"C:\", @"my work\b.lib")]
     public void ALibraryPathWithSpacesBecomesRelativeToTheWorkingDirectory(string path, string workingDirectory, string expected)
     {
         Assert.AreEqual(expected, OdinBuildArguments.ToLinkerPath(path, workingDirectory));
