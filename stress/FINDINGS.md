@@ -49,5 +49,5 @@ Evaluating one project (`-getItem:OdinCompile`) takes 0.4 s. Every run produced 
 
 ## Not done
 - Solution load time and memory in Visual Studio (needs the user in Exp; open a generated `Stress.sln` and note the Output window and Task Manager figures here).
-- ols with 100 collections (the language client passes the union of all collections to one ols; the resulting `initializationOptions` size and ols start time were not measured).
+- ~~ols with 100 collections~~ **Measured 2026-11-14 (tier-2 `OlsCollectionTests.OneHundredCollectionsInitializeAndResolveAnImportQuickly`, pinned ols dev-2026-10, real odin):** starting ols with 100 collections in `initializationOptions` and completing `initialize` took 259 ms, the first hover (an import through the 50th collection) 3 ms after `didOpen`, and the import resolved. `AHundredProjectsLoadingInOneBurstRaiseOneChange` (tier 1) shows 100 projects reporting in one burst cause one ols restart. Not measured: ols checking time on a real 100-project solution (diagnostics only run on save) and the restart cost inside Visual Studio.
 - A solution with mixed Odin, C++ and C# projects at this size.

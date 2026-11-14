@@ -22,6 +22,7 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
     private readonly Log m_Log = Log.Default;
     private IDisposable? m_Link;
     private string m_LastLogged = string.Empty;
+    private volatile string? m_RegisteredPath;
 
     [ImportingConstructor]
     public OdinCollectionSubscriber(UnconfiguredProject project, IActiveConfiguredProjectSubscriptionService subscription)
@@ -59,8 +60,11 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
         m_Project.ProjectUnloading -= OnProjectUnloadingAsync;
         m_Link?.Dispose();
         m_Link = null;
-        OdinCollectionRegistry.Instance.Remove(m_Project.FullPath);
-        m_Log.Write($"collection of {m_Project.FullPath} released");
+        // The path the entry was registered under, not FullPath now: a renamed project reports its new path here.
+        string path = m_RegisteredPath ?? m_Project.FullPath;
+        OdinCollectionRegistry.Instance.Remove(path);
+        m_RegisteredPath = null;
+        m_Log.Write($"collection of {path} released");
     }
 
     // Runs on a dataflow thread; must not throw (an exception would fault the block and end the subscription).
@@ -84,7 +88,15 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
                 m_LastLogged = value;
                 m_Log.Write($"collection of {m_Project.FullPath}: {value}");
             }
-            OdinCollectionRegistry.Instance.Set(m_Project.FullPath, name, root);
+            string path = m_Project.FullPath;
+            if (m_RegisteredPath is not null && !string.Equals(m_RegisteredPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                // The project was renamed or moved: drop the entry under the old path, or it would stay until the solution is reopened.
+                OdinCollectionRegistry.Instance.Remove(m_RegisteredPath);
+            }
+
+            m_RegisteredPath = path;
+            OdinCollectionRegistry.Instance.Set(path, name, root);
         }
         catch (Exception ex)
         {
