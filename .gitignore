@@ -13,3 +13,4 @@ _UpgradeReport_Files/
 /stress/*
 !/stress/FINDINGS.md
 /stress-*/
+/tests/samples/stress-*/

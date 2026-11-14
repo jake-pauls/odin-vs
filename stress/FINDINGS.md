@@ -10,7 +10,7 @@ scripts\new-stress-solution.ps1 -Count 100 -Shape Flat  -OutputDirectory <new fo
 scripts\new-stress-solution.ps1 -Count 300 -Shape Tree  -OutputDirectory <new folder> -Measure
 ```
 
-Folders named `stress\` and `stress-*\` in the repo root are git-ignored scratch space for them (only this file is tracked).
+Generated solutions default to `tests\samples\stress-<shape>-<count>\` (git-ignored; older runs used `stress-*\` in the repo root, also ignored). Only this file is tracked.
 
 ## What is generated
 `Stress001` .. `StressNNN`, each an `.odinproj` with one package of its own plus a `main.odin` that prints the package's `value()`. Every reference is a **Source** reference, so a project compiles every package below it (all collections are transitive). Shapes:

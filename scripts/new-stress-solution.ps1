@@ -10,7 +10,7 @@
     Chain project i references i+1 (depth Count: the worst case for transitive collections and recompilation)
     Flat  project 1 references every other project (one project with Count-1 direct references)
   Every reference is a Source reference, so a project compiles all packages below it.
-  The output folder is git-ignored when it is the default (stress\ in the repo root). Nothing here is part of the product.
+  The default output folder is tests\samples\stress-<shape>-<count>, git-ignored (stress-*). A relative -OutputDirectory is taken from the current directory. Nothing here is part of the product.
 
 .PARAMETER Measure
   After generating, run: cold restore + build (-m), a no-op build, a one-leaf touch + build, and a clean. Times go to the console and to
@@ -19,7 +19,7 @@
 param(
     [int]$Count = 100,
     [ValidateSet('Tree', 'Chain', 'Flat')][string]$Shape = 'Tree',
-    [string]$OutputDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) 'stress'),
+    [string]$OutputDirectory = '',
     [string]$SdkVersion = '0.5.0-local',
     [switch]$Measure
 )
@@ -27,6 +27,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $utf8 = New-Object System.Text.UTF8Encoding($false)
+if ($OutputDirectory.Length -eq 0) {
+    # Next to the other samples; git-ignored there as stress-*.
+    $OutputDirectory = Join-Path $repo "tests\samples\stress-$($Shape.ToLowerInvariant())-$Count"
+}
+if (-not [IO.Path]::IsPathRooted($OutputDirectory)) {
+    # NuGet needs absolute paths (the scratch package cache lives in the output folder).
+    $OutputDirectory = Join-Path (Get-Location).Path $OutputDirectory
+}
+
 $odinProjectType = '{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}'
 
 function Name([int]$i) { 'Stress{0:D3}' -f $i }
