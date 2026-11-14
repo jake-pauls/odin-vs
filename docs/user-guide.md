@@ -28,7 +28,7 @@ What you get today: `.odin` syntax colorization, language-server diagnostics on 
 A project uses the `Odin.Sdk` MSBuild SDK and lists its own source files:
 
 ```xml
-<Project Sdk="Odin.Sdk/0.5.0-local">
+<Project Sdk="Odin.Sdk/0.5.1-local">
   <ItemGroup>
     <OdinCompile Include="src\**\*.odin" />
   </ItemGroup>
@@ -60,7 +60,7 @@ msbuild MyProject.odinproj /restore /t:Rebuild /p:Configuration=Release
      </packageSources>
    </configuration>
    ```
-3. Make sure the project's `Sdk` attribute names the version you packed: the file `nuget\Odin.Sdk.<version>.nupkg` gives it, e.g. `Odin.Sdk/0.5.0-local`.
+3. Make sure the project's `Sdk` attribute names the version you packed: the file `nuget\Odin.Sdk.<version>.nupkg` gives it, e.g. `Odin.Sdk/0.5.1-local`.
 4. Build or reload the project. The first restore pulls the SDK into `~\.nuget\packages`; if you repack the same version, delete `~\.nuget\packages\odin.sdk` (or bump the version) or the old copy keeps being used.
 
 `tests/samples/nuget.config` is a working example. A project created from the Odin templates in Visual Studio needs steps 2 and 3 as well; until they are done it fails to load with an SDK-resolution error.
