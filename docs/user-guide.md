@@ -132,7 +132,7 @@ A `ProjectReference` makes another project available to this one. Odin has no se
 
 Build order comes from MSBuild and Visual Studio (`ProjectReference`); the SDK adds no scheduler of its own. The `Build` target's inputs include the sources of every `Source`-referenced project, so changing a library's source rebuilds whoever uses it; an unchanged graph runs `odin` zero times.
 
-In Visual Studio: *Project > Add Project Reference...* (or the Add Reference command on the **Dependencies** node) opens the Reference Manager's Projects tab; the new `ProjectReference` is written to the `.odinproj` when the project is saved or built. Visual Studio rejects a reference that would close a loop (*"Adding this project as a reference would cause a circular dependency"*). On the command line a loop fails the build with MSBuild's own `MSB4006` (circular dependency) listing the projects.
+In Visual Studio: *Project > Add Project Reference...* (or the Add Reference command on the **Dependencies** node) opens the Reference Manager's Projects tab; the new `ProjectReference` is written to the `.odinproj` when the project is saved or built. Visual Studio rejects a reference that would close a loop (*"Adding this project as a reference would cause a circular dependency"*). On the command line (and in a Visual Studio build, should a loop get into the file by hand) it fails the build with `ODIN0102`, naming the loop (`A -> B -> A`).
 
 Two referenced projects must not use the same collection name with different roots (`ODIN0103`): give each a different `OdinCollectionName`, or remove the one that makes them match.
 
@@ -233,7 +233,7 @@ Odin does not give its errors codes, so odin-vs assigns them.
 | `ODIN0002` | warning | Odin reported a compile warning, for example use of a `@(deprecated)` procedure | Does not fail the build; the exe is still produced |
 | `ODIN0100` | error | `odin build` failed (non-zero exit) but gave no error list, such as a link failure or crash | The message carries whatever Odin printed |
 | `ODIN0101` | error | `odin.exe` was not found | Install Odin, add it to `PATH`, or set `OdinExe` |
-| `ODIN0102` | error | A circular project reference, reported with its path (`A -> B -> A`) | Raised by the reference resolver. Today MSBuild's own `MSB4006` fires first on the command line, and Visual Studio's Add Reference refuses the loop, so this code is not seen yet |
+| `ODIN0102` | error | A circular project reference, reported with its path (`A -> B -> A`) | Raised by the reference resolver on every build (command line and Visual Studio). Visual Studio's Add Reference refuses a loop before it is written, with its own message that has no path |
 | `ODIN0103` | error (build); warning (info bar, log) | Two referenced projects use the same collection name with different roots. In the editor it is raised for any two projects in the solution, referenced or not, because the language server gets every project's collection | Give each project a different `OdinCollectionName`, or remove the one that makes them match |
 | `ODIN0104` | error | A referenced project could not be read | Check that the file exists and loads |
 | `ODIN0105` | error | A `Link` reference to a project that produces no library | Use a `Source` reference, or reference a library project |
