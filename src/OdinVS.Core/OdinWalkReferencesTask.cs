@@ -26,7 +26,7 @@ public sealed class OdinWalkReferences : Microsoft.Build.Utilities.Task
     {
         if (BuildEngine is not IBuildEngine3 engine)
         {
-            Log.LogError("ODIN0104: this MSBuild host cannot build referenced projects from a task (IBuildEngine3 is missing).");
+            Log.LogError(null, OdinReferenceResolver.HostCannotWalkCode, null, ProjectPath, 0, 0, 0, 0, "{0}", "this MSBuild host cannot build referenced projects from a task (IBuildEngine3 is missing), so the reference graph cannot be read.");
             return false;
         }
 

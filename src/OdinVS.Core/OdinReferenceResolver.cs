@@ -41,6 +41,7 @@ public static class OdinReferenceResolver
     public const string UnresolvedReferenceCode = "ODIN0104";
     public const string NoLibraryCode = "ODIN0105";
     public const string DuplicateLibraryCode = "ODIN0108";
+    public const string HostCannotWalkCode = "ODIN0109";
 
     public static OdinResolvedReferences Resolve(string rootProjectPath, IEnumerable<OdinProjectNode> nodes)
     {

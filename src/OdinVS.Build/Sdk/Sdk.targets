@@ -86,7 +86,6 @@
     <OdinLinkLibrary Condition="'$(OdinLinkLibrary)' == '' and '$(OdinOutputType)' == 'Lib'">$(TargetPath)</OdinLinkLibrary>
   </PropertyGroup>
 
-  <!-- Returns this project's own node plus the nodes of its native references; it does not recurse (OdinGetReferenceInfo walks the graph). -->
   <!-- Built on its own (no solution), the project's own Configuration/Platform defaults are not global properties, so a referenced
        .vcxproj would fall back to its own default (Win32). Pass ours then; inside VS or a solution the globals already flow through. -->
   <PropertyGroup Condition="'$(_OdinConfigurationDefaulted)' == 'true'">
@@ -102,6 +101,7 @@
     </ItemGroup>
   </Target>
 
+  <!-- Returns this project's own node plus the nodes of its native references; it does not recurse (OdinGetReferenceInfo walks the graph). -->
   <Target Name="OdinGetNodeInfo" DependsOnTargets="_OdinClassifyReferences" Returns="@(OdinReferenceNode)">
     <MSBuild Projects="@(_OdinNativeRef)" Targets="GetTargetPath" Properties="$(_OdinReferenceProperties)" Condition="'@(_OdinNativeRef)' != ''">
       <Output TaskParameter="TargetOutputs" ItemName="_OdinNativeOutput" />
