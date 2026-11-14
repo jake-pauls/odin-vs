@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 
 namespace OdinVS.Core.Tests;
@@ -115,7 +116,7 @@ public sealed class OlsCollectionTests
         File.WriteAllText(file, "package main\n\nimport \"c050:pkg\"\n\nmain :: proc() {\n\tx := pkg.value50()\n\t_ = x\n}\n");
         JsonObject options = new() { ["odin_command"] = OdinPath, ["checker_path"] = new JsonArray(project), ["collections"] = collections };
 
-        System.Diagnostics.Stopwatch timer = System.Diagnostics.Stopwatch.StartNew();
+        Stopwatch timer = Stopwatch.StartNew();
         using OlsClient client = Start(options);
         TimeSpan initialize = timer.Elapsed;
         timer.Restart();

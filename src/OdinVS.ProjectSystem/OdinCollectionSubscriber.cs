@@ -88,6 +88,7 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
                 m_LastLogged = value;
                 m_Log.Write($"collection of {m_Project.FullPath}: {value}");
             }
+
             string path = m_Project.FullPath;
             if (m_RegisteredPath is not null && !string.Equals(m_RegisteredPath, path, StringComparison.OrdinalIgnoreCase))
             {
