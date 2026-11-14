@@ -87,6 +87,12 @@
 
   <!-- Returns this project's node plus the nodes of everything it references (MSBuild recurses; results are cached per project, so a
        diamond or a 100-project chain costs one evaluation each). A cycle ends in MSBuild's own circular-dependency error here. -->
+  <!-- Built on its own (no solution), the project's own Configuration/Platform defaults are not global properties, so a referenced
+       .vcxproj would fall back to its own default (Win32). Pass ours then; inside VS or a solution the globals already flow through. -->
+  <PropertyGroup Condition="'$(_OdinConfigurationDefaulted)' == 'true'">
+    <_OdinReferenceProperties>Configuration=$(Configuration);Platform=$(Platform)</_OdinReferenceProperties>
+  </PropertyGroup>
+
   <Target Name="_OdinClassifyReferences">
     <ItemGroup>
       <_OdinOdinRef Include="@(ProjectReference)" Condition="'%(Extension)' == '.odinproj'" />
@@ -100,7 +106,7 @@
     <MSBuild Projects="@(_OdinOdinRef)" Targets="OdinGetReferenceInfo" Condition="'@(_OdinOdinRef)' != ''">
       <Output TaskParameter="TargetOutputs" ItemName="_OdinNestedNode" />
     </MSBuild>
-    <MSBuild Projects="@(_OdinNativeRef)" Targets="GetTargetPath" Condition="'@(_OdinNativeRef)' != ''">
+    <MSBuild Projects="@(_OdinNativeRef)" Targets="GetTargetPath" Properties="$(_OdinReferenceProperties)" Condition="'@(_OdinNativeRef)' != ''">
       <Output TaskParameter="TargetOutputs" ItemName="_OdinNativeOutput" />
     </MSBuild>
     <ItemGroup>
@@ -141,7 +147,7 @@
     <ItemGroup>
       <_OdinLinkRef Include="@(_OdinOdinRef->WithMetadataValue('ReferenceKind', 'Link'));@(_OdinNativeRef->WithMetadataValue('ReferenceKind', 'Link'))" />
     </ItemGroup>
-    <MSBuild Projects="@(_OdinLinkRef)" Targets="Build" Condition="'@(_OdinLinkRef)' != ''" />
+    <MSBuild Projects="@(_OdinLinkRef)" Targets="Build" Properties="$(_OdinReferenceProperties)" Condition="'@(_OdinLinkRef)' != ''" />
   </Target>
 
   <Target Name="OdinResolveReferences" DependsOnTargets="OdinBuildLinkReferences;OdinGetReferenceInfo">

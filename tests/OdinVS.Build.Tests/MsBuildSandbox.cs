@@ -140,6 +140,26 @@ internal sealed class MsBuildSandbox
             new Dictionary<string, string> { ["NUGET_PACKAGES"] = PackagesDirectory });
     }
 
+    // Visual Studio's own MSBuild (.NET Framework), which can build .vcxproj; `dotnet msbuild` cannot. Assumes the machine's VS 18 Community
+    // install (see CLAUDE.md "Machine"); null when it is missing, so a test can report itself inconclusive.
+    public const string VisualStudioMsBuild = @"C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe";
+
+    public MsBuildResult BuildWithVisualStudio(string projectDirectory, string projectOrSolution, string targets, params string[] properties)
+    {
+        string propertyArguments = string.Concat(properties.Select(p => $" -p:\"{p}\""));
+        return Run(
+            VisualStudioMsBuild,
+            $"\"{Path.Combine(projectDirectory, projectOrSolution)}\" -restore -t:{targets} -nodeReuse:false -nologo -v:n{propertyArguments}",
+            projectDirectory,
+            new Dictionary<string, string> { ["NUGET_PACKAGES"] = PackagesDirectory });
+    }
+
+    // Copies a loose file of tests/samples (a .sln) next to the sample folders.
+    public void CopySampleFile(string workDirectory, string fileName)
+    {
+        File.Copy(Path.Combine(RepoRoot, "tests", "samples", fileName), Path.Combine(workDirectory, fileName));
+    }
+
     private static MsBuildResult Run(string fileName, string arguments, string workingDirectory, IDictionary<string, string> environment)
     {
         ProcessStartInfo startInfo = new(fileName, arguments)

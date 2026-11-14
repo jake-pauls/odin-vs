@@ -1,6 +1,12 @@
-<Project>
+<!-- DefaultTargets: a solution build asks a project for its default targets; without this the first target in Sdk.targets ran (found with the mixed sample: the odinproj built nothing). -->
+<Project DefaultTargets="Build">
   <!-- Defaults only, set when the project has not; same pattern as Microsoft.NET.Sdk (Configurations=Debug;Release).
        Which files compile is the project's decision: .odinproj files list their own OdinCompile items. -->
+  <!-- Remember when the project itself supplied Configuration/Platform (no global property from VS, a solution or /p:), so references to
+       other project types can be built for the same configuration; see _OdinReferenceProperties in Sdk.targets. -->
+  <PropertyGroup Condition="'$(Configuration)' == '' or '$(Platform)' == ''">
+    <_OdinConfigurationDefaulted>true</_OdinConfigurationDefaulted>
+  </PropertyGroup>
   <PropertyGroup>
     <Configurations Condition="'$(Configurations)' == ''">Debug;Release</Configurations>
     <Platforms Condition="'$(Platforms)' == ''">x64</Platforms>
