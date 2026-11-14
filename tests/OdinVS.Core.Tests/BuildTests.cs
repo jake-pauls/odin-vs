@@ -145,6 +145,20 @@ public sealed class OdinBuildArgumentsTests
     }
 
     [TestMethod]
+    [DataRow(@"C:\my work\lib\bin\b.lib", @"C:\my work\p", @"..\lib\bin\b.lib")]
+    [DataRow(@"C:\my work\lib#1\50%\x[1]\b.lib", @"C:\my work\p", @"..\lib#1\50%\x[1]\b.lib")]
+    [DataRow(@"C:\my work\p\bin\b.lib", @"C:\my work\p", @"bin\b.lib")]
+    [DataRow(@"C:\MY WORK\p\bin\b.lib", @"c:\my work\p\", @"bin\b.lib")]
+    [DataRow(@"C:\my work\lib\b.lib", @"C:\my work\p\q\r", @"..\..\..\lib\b.lib")]
+    [DataRow(@"D:\my work\lib\b.lib", @"C:\my work\p", @"D:\my work\lib\b.lib")]
+    [DataRow(@"\\srv\share a\lib\b.lib", @"\\other\share a\p", @"\\srv\share a\lib\b.lib")]
+    [DataRow(@"\\srv\share a\lib\b.lib", @"\\srv\share a\p", @"..\lib\b.lib")]
+    public void ALibraryPathWithSpacesBecomesRelativeToTheWorkingDirectory(string path, string workingDirectory, string expected)
+    {
+        Assert.AreEqual(expected, OdinBuildArguments.ToLinkerPath(path, workingDirectory));
+    }
+
+    [TestMethod]
     [DataRow("Dll", "-build-mode:dll")]
     [DataRow("dll", "-build-mode:dll")]
     [DataRow("Lib", "-build-mode:lib")]

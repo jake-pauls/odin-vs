@@ -49,6 +49,22 @@ public sealed class LinkTargetTests
     }
 
     [TestMethod]
+    public void CleanRemovesTheDllsCopiedFromLinkReferences()
+    {
+        string work = MsBuildSandbox.Instance.CopySamples("LinkApp", "LinkDll");
+        Assert.AreEqual(0, Build(work, "LinkApp").ExitCode);
+        string copied = Path.Combine(work, "LinkApp", "bin", "Debug", "LinkDll.dll");
+        Assert.IsTrue(File.Exists(copied));
+
+        MsBuildResult clean = Build(work, "LinkApp", "Clean");
+        Assert.AreEqual(0, clean.ExitCode, clean.Output);
+        Assert.IsFalse(File.Exists(copied), "the copied DLL must go");
+        Assert.IsFalse(File.Exists(Output(work, "LinkApp", ".exe")));
+        Assert.IsTrue(File.Exists(Output(work, "LinkDll", ".dll")), "Clean of one project leaves the referenced project's output");
+        Assert.IsEmpty(Directory.GetFiles(Path.Combine(work, "LinkApp", "bin", "Debug")), "nothing of ours may be left in the output folder");
+    }
+
+    [TestMethod]
     public void LinkingWorksWhenTheProjectsLiveInAFolderWithSpaces()
     {
         // odin splits -extra-linker-flags on spaces, so the task passes the library relative to the project folder.

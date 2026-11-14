@@ -76,9 +76,24 @@ internal static class OdinBuildArguments
             return path;
         }
 
-        Uri baseUri = new(workingDirectory.TrimEnd('\\', '/') + "\\");
-        Uri relative = baseUri.MakeRelativeUri(new Uri(path));
-        return relative.IsAbsoluteUri ? path : Uri.UnescapeDataString(relative.ToString()).Replace('/', '\\');
+        // Segment by segment, not through Uri: a folder named "a#b", "50%" or "x[1]" would be escaped or cut by Uri.
+        string[] from = Path.GetFullPath(workingDirectory).TrimEnd('\\', '/').Split('\\');
+        string[] to = Path.GetFullPath(path).Split('\\');
+        int common = 0;
+        while (common < from.Length && common < to.Length - 1 && string.Equals(from[common], to[common], StringComparison.OrdinalIgnoreCase))
+        {
+            common++;
+        }
+
+        // Nothing in common: another drive, or (a UNC path starts with two empty segments, then server and share) another share.
+        int minimumShared = path.StartsWith(@"\\", StringComparison.Ordinal) ? 4 : 1;
+        if (common < minimumShared)
+        {
+            return path;
+        }
+
+        IEnumerable<string> segments = Enumerable.Repeat("..", from.Length - common).Concat(to.Skip(common));
+        return string.Join("\\", segments);
     }
 
     public static bool HasWhitespace(string value)
