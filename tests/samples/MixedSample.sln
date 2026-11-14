@@ -1,0 +1,36 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.0.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{7B1D0F42-3C9E-4E6A-8A15-5D2F9C3E71B8}") = "MixedApp", "MixedApp\MixedApp.odinproj", "{B4444444-0000-4000-8000-000000000001}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MixedNative", "MixedNative\MixedNative.vcxproj", "{B4444444-0000-4000-8000-000000000002}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MixedCs", "MixedCs\MixedCs.csproj", "{B4444444-0000-4000-8000-000000000003}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B4444444-0000-4000-8000-000000000001}.Debug|x64.ActiveCfg = Debug|x64
+		{B4444444-0000-4000-8000-000000000001}.Debug|x64.Build.0 = Debug|x64
+		{B4444444-0000-4000-8000-000000000001}.Release|x64.ActiveCfg = Release|x64
+		{B4444444-0000-4000-8000-000000000001}.Release|x64.Build.0 = Release|x64
+		{B4444444-0000-4000-8000-000000000002}.Debug|x64.ActiveCfg = Debug|x64
+		{B4444444-0000-4000-8000-000000000002}.Debug|x64.Build.0 = Debug|x64
+		{B4444444-0000-4000-8000-000000000002}.Release|x64.ActiveCfg = Release|x64
+		{B4444444-0000-4000-8000-000000000002}.Release|x64.Build.0 = Release|x64
+		{B4444444-0000-4000-8000-000000000003}.Debug|x64.ActiveCfg = Debug|x64
+		{B4444444-0000-4000-8000-000000000003}.Debug|x64.Build.0 = Debug|x64
+		{B4444444-0000-4000-8000-000000000003}.Release|x64.ActiveCfg = Release|x64
+		{B4444444-0000-4000-8000-000000000003}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {FCA09E3C-4688-4755-808B-459555DB6356}
+	EndGlobalSection
+EndGlobal

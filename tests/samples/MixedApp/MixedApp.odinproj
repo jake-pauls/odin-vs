@@ -1,0 +1,9 @@
+<Project Sdk="Odin.Sdk/0.5.0-local">
+  <ItemGroup>
+    <OdinCompile Include="src\**\*.odin" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- A .vcxproj reference is a Link reference: its import library goes to the linker and its DLL is copied next to the exe. -->
+    <ProjectReference Include="..\MixedNative\MixedNative.vcxproj" />
+  </ItemGroup>
+</Project>
