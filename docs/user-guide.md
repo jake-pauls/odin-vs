@@ -28,7 +28,7 @@ What you get today: `.odin` syntax colorization, language-server diagnostics on 
 A project uses the `Odin.Sdk` MSBuild SDK and lists its own source files:
 
 ```xml
-<Project Sdk="Odin.Sdk/0.3.3-local">
+<Project Sdk="Odin.Sdk/0.5.0-local">
   <ItemGroup>
     <OdinCompile Include="src\**\*.odin" />
   </ItemGroup>
@@ -60,7 +60,7 @@ msbuild MyProject.odinproj /restore /t:Rebuild /p:Configuration=Release
      </packageSources>
    </configuration>
    ```
-3. Make sure the project's `Sdk` attribute names the version you packed: the file `nuget\Odin.Sdk.<version>.nupkg` gives it, e.g. `Odin.Sdk/0.3.3-local`.
+3. Make sure the project's `Sdk` attribute names the version you packed: the file `nuget\Odin.Sdk.<version>.nupkg` gives it, e.g. `Odin.Sdk/0.5.0-local`.
 4. Build or reload the project. The first restore pulls the SDK into `~\.nuget\packages`; if you repack the same version, delete `~\.nuget\packages\odin.sdk` (or bump the version) or the old copy keeps being used.
 
 `tests/samples/nuget.config` is a working example. A project created from the Odin templates in Visual Studio needs steps 2 and 3 as well; until they are done it fails to load with an SDK-resolution error.
@@ -85,12 +85,17 @@ Everything an `.odinproj` can set, with its default. Properties are plain MSBuil
 | `TargetName` | project name | Output file name without extension |
 | `LocalDebuggerCommandArguments` | empty | Arguments passed to the program on F5 and Ctrl+F5 |
 | `LocalDebuggerWorkingDirectory` | the project directory | Working directory on F5 and Ctrl+F5 (relative to the project, or absolute) |
-| `TargetPath` | `<OutDir><TargetName>.exe` | Full output path (relative to the project, or absolute); the `.pdb` is written next to it with the same name |
+| `TargetPath` | `<OutDir><TargetName>` + `.exe`, `.dll` or `.lib` by `OdinOutputType` | Full output path (relative to the project, or absolute); the `.pdb` is written next to it with the same name |
+| `OdinCollectionName` | project name | Name other projects use to import this one when they reference it: `import "<name>:<path>"` (see [References](#references)) |
+| `OdinCollectionRoot` | the project directory | Directory the collection name points at (relative to the project, or absolute) |
+| `OdinOutputType` | `Exe` | What the project builds: `Exe`, `Dll` or `Lib` (static library). Selects `-build-mode:` and the output extension (`.exe`, `.dll` with its import `.lib` next to it, `.lib`). Any other value is an error (`ODIN0106`). **`Lib` does not work yet:** with the installed Odin (`dev-2026-10`) `-build-mode:lib` fails to link on Windows (see [References](#references)). An F5 on a library project is meant to say it cannot be started (implemented, not checked in Exp) |
+| `OdinLinkLibrary` | the import `.lib` for `Dll`, the `.lib` for `Lib`, otherwise empty | The library file a project that links this one passes to the linker; empty for executables, so linking an executable is an error (`ODIN0105`) |
 
 | Item | Purpose |
 |---|---|
 | `OdinCompile` | The project's own source files, e.g. `<OdinCompile Include="src\**\*.odin" />`. The SDK adds none; the `.odinproj` lists them. Changing one rebuilds |
 | `OdinCollection` | An `-collection:name=path` passed to `odin`: `<OdinCollection Include="name"><Path>dir</Path></OdinCollection>` |
+| `ProjectReference` | A reference to another project, `<ProjectReference Include="..\Lib\Lib.odinproj" />`; optional metadata `ReferenceKind` = `Source` or `Link` (see [References](#references)) |
 | `ProjectConfiguration` | Declares a configuration to Visual Studio; see [Configurations](#configurations) |
 
 Incremental builds look at the `OdinCompile` files and the `.odinproj`, so changing a property only with `/p:` on the command line does not trigger a rebuild; use the Rebuild target.
@@ -115,6 +120,39 @@ To make a custom configuration appear in VS, declare literal items in the `.odin
 ```
 
 The values must be plain text: VS reads them without evaluating `$(...)` (see `docs/pitfalls.md`). A solution configuration of the same name still has to be created in the Configuration Manager (or the `.sln`), and each project mapped to it; a project that does not declare that name is skipped when that solution configuration builds.
+
+## References
+
+A `ProjectReference` makes another project available to this one. Odin has no separate compilation of libraries (building a project compiles its package and every package it imports, from source), so there are two kinds:
+
+| `ReferenceKind` | Default for | What happens |
+|---|---|---|
+| `Source` | another `.odinproj` | The referenced project is compiled as source: its collection is passed as `-collection:<OdinCollectionName>=<OdinCollectionRoot>`, so you write `import "Lib:src/greeter"`. Collections are transitive: if `Lib` references `Base`, anything referencing `Lib` also gets `Base`'s collection |
+| `Link` | a `.vcxproj` (C/C++) | The referenced project is built first and its library (`.lib`; for a DLL its import library next to the `.dll`) goes to the linker through `-extra-linker-flags`. Linking is also found through `Source` references, so `App` -> `Lib` (Source) -> `Native` (Link) links `Native` into `App` |
+
+Build order comes from MSBuild and Visual Studio (`ProjectReference`); the SDK adds no scheduler of its own. The `Build` target's inputs include the sources of every `Source`-referenced project, so changing a library's source rebuilds whoever uses it; an unchanged graph runs `odin` zero times.
+
+In Visual Studio: *Project > Add Project Reference...* (or the Add Reference command on the **Dependencies** node) opens the Reference Manager's Projects tab; the new `ProjectReference` is written to the `.odinproj` when the project is saved or built. Visual Studio rejects a reference that would close a loop (*"Adding this project as a reference would cause a circular dependency"*). On the command line a loop fails the build with MSBuild's own `MSB4006` (circular dependency) listing the projects.
+
+Two referenced projects must not use the same collection name with different roots (`ODIN0103`): give each a different `OdinCollectionName`, or remove the one that makes them match.
+
+**IntelliSense across projects:** the language server (ols) is given one collection per `.odinproj` in the solution, referenced or not, so `import "name:pkg"` resolves in the editor for every project. ols takes one collection set per process, so two projects with the same name collide (info bar `ODIN0103`; the first project by path keeps the name). The names and roots are the values MSBuild evaluates (the project system tracks them), so imports, conditions and `$(...)` are honoured. ols restarts when a project is added, removed, loaded or unloaded, or when a project's collection name or root changes (saving the `.odinproj` is enough).
+
+**Linking an Odin DLL (checked with real odin, command line):** give the library project `<OdinOutputType>Dll</OdinOutputType>` and reference it from the executable with `ReferenceKind="Link"`:
+
+```xml
+<ProjectReference Include="..\MyDll\MyDll.odinproj" ReferenceKind="Link" />
+```
+
+The DLL is built first, its import library goes to the linker (with its folder as `/LIBPATH`), and the `.dll` is copied next to your exe. In the Odin source, declare the procedures in a `foreign` block (`@(export)` and `"c"` on the DLL side). No `foreign import` is needed: the library is already on the link line (a `foreign import "system:MyDll.lib"` also works). Calling a procedure with no declaration is an error (`Undeclared name`), and importing the DLL project's package as a `Source` reference instead compiles its code into your exe, not the DLL.
+
+```odin
+foreign { dll_mul :: proc "c" (a, b: i32) -> i32 --- }
+```
+
+Samples: `tests/samples/LinkApp`, `LinkDll` (and `LinkLib`, the static one) in `OdinLinking.sln`. A project folder with spaces is fine (the library is passed relative to the project), but the library path itself cannot have spaces after that (`ODIN0107`). The DLL (and its PDB) is copied next to the exe on every build, also when the exe itself is up to date, so a deleted copy comes back. `Clean` does not remove those copies yet.
+
+**Known gaps** (see `docs/milestones.md`, M6): `OdinOutputType` `Lib` (static library) fails with the installed Odin; `Link` to a C/C++ `.vcxproj` is not built or tested with a real C++ project (only an Odin DLL has been linked).
 
 ## Projects in Visual Studio
 
@@ -195,6 +233,13 @@ Odin does not give its errors codes, so odin-vs assigns them.
 | `ODIN0002` | warning | Odin reported a compile warning, for example use of a `@(deprecated)` procedure | Does not fail the build; the exe is still produced |
 | `ODIN0100` | error | `odin build` failed (non-zero exit) but gave no error list, such as a link failure or crash | The message carries whatever Odin printed |
 | `ODIN0101` | error | `odin.exe` was not found | Install Odin, add it to `PATH`, or set `OdinExe` |
+| `ODIN0102` | error | A circular project reference, reported with its path (`A -> B -> A`) | Raised by the reference resolver. Today MSBuild's own `MSB4006` fires first on the command line, and Visual Studio's Add Reference refuses the loop, so this code is not seen yet |
+| `ODIN0103` | error (build); warning (info bar, log) | Two referenced projects use the same collection name with different roots. In the editor it is raised for any two projects in the solution, referenced or not, because the language server gets every project's collection | Give each project a different `OdinCollectionName`, or remove the one that makes them match |
+| `ODIN0104` | error | A referenced project could not be read | Check that the file exists and loads |
+| `ODIN0105` | error | A `Link` reference to a project that produces no library | Use a `Source` reference, or reference a library project |
+| `ODIN0106` | error | `OdinOutputType` is not `Exe`, `Dll` or `Lib` | Fix the value in the `.odinproj` |
+| `ODIN0107` | error | A library to link has a path with spaces that cannot be written relative to the project folder | Odin splits `-extra-linker-flags` on spaces; move the project or set `OutDir` so the library path has none |
+| `ODIN0108` | error | Two linked libraries (Link references, including through Source references) have the same file name in different folders; the linker finds a library by name and would use only one | Give one of the projects a different `TargetName` |
 | `ODINPKG1` | warning | Packing `Odin.Sdk` with `scripts\pack-sdk.ps1` | Reminder that the package is local only and must not be published; not a build diagnostic |
 | `ols.<code>` | error | A diagnostic from the ols language server while editing (for example `ols.checker`, `ols.Syntax`) | Appears on save; not part of the build |
 

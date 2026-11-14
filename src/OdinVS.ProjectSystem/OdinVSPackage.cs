@@ -23,6 +23,7 @@ public sealed class OdinVSPackage : AsyncPackage
 
     private readonly Log m_Log = Log.Default;
     private int m_Checking;
+    private volatile IReadOnlyList<string> m_ToolWarnings = [];
     private IVsInfoBarHost? m_Host;
     private IVsInfoBarUIElement? m_Bar;
 
@@ -44,6 +45,33 @@ public sealed class OdinVSPackage : AsyncPackage
         {
             StartCheck(extensionDirectory);
         }
+
+        // Collection-name collisions are found from the solution's projects, whether or not an .odin file was opened yet.
+        OdinCollectionRegistry.Instance.ProblemsChanged += () => JoinableTaskFactory.RunAsync(() => RefreshBarAsync(DisposalToken)).Task.Forget();
+    }
+
+    private async Task RefreshBarAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ReplaceInfoBarAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // VS is shutting down; there is nothing to show.
+        }
+        catch (Exception ex)
+        {
+            m_Log.Write($"could not update the Odin info bar: {ex}. Problems are in this log.");
+        }
+    }
+
+    // Tool warnings (missing odin/ols, version mismatch) and collection problems (name collisions) share one bar.
+    private string? CombinedText()
+    {
+        IEnumerable<string> parts = m_ToolWarnings.Concat(OdinCollectionRegistry.Instance.Problems.Select(p => $"{p.Code}: {p.Message}"));
+        string text = string.Join(" ", parts);
+        return text.Length == 0 ? null : text;
     }
 
     // ShowToolWarningsAsync catches everything but cancellation, so the task needs no further observation.
@@ -61,7 +89,8 @@ public sealed class OdinVSPackage : AsyncPackage
         {
             IReadOnlyList<string> warnings = await Task.Run(() => CollectWarnings(extensionDirectory), cancellationToken);
             m_Log.Write(warnings.Count == 0 ? "tool check: odin and ols found, versions match" : $"tool check: {warnings.Count} warning(s)");
-            await ReplaceInfoBarAsync(warnings.Count == 0 ? null : string.Join(" ", warnings), cancellationToken);
+            m_ToolWarnings = warnings;
+            await ReplaceInfoBarAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -85,9 +114,11 @@ public sealed class OdinVSPackage : AsyncPackage
     }
 
     // Removes the bar from an earlier check, then shows a new one when text is not null.
-    private async Task ReplaceInfoBarAsync(string? text, CancellationToken cancellationToken)
+    private async Task ReplaceInfoBarAsync(CancellationToken cancellationToken)
     {
         await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+        // Read after the switch so the newest tool warnings and collisions win when two updates overlap.
+        string? text = CombinedText();
         if (m_Host is not null && m_Bar is not null)
         {
             m_Host.RemoveInfoBar(m_Bar);
@@ -113,7 +144,14 @@ public sealed class OdinVSPackage : AsyncPackage
             KnownMonikers.StatusWarning,
             true);
         IVsInfoBarUIElement element = factory.CreateInfoBar(model);
-        LogLinkHandler handler = new(Log.DataDirectory, m_Log, () => m_Bar = null);
+        LogLinkHandler handler = new(Log.DataDirectory, m_Log, () =>
+        {
+            // The old bar's close can arrive after a newer bar was shown; only clear our own.
+            if (ReferenceEquals(m_Bar, element))
+            {
+                m_Bar = null;
+            }
+        });
         element.Advise(handler, out uint cookie);
         handler.Cookie = cookie;
         host.AddInfoBar(element);

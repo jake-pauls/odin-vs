@@ -28,6 +28,11 @@
     <ProjectCapability Include="UseFileGlobs" />
     <!-- Same switch C# sets: our own [ExportDebugger] provider is used instead of VS's built-in Windows Local Debugger. -->
     <ProjectCapability Include="DisableBuiltInDebuggerServices" />
+    <!-- References (M6). ProjectReferences enables VS's own project-reference services: the Projects tab of Add Reference, writing the
+         ProjectReference item, solution build ordering and VS's circular-reference check (decompiled from the VS 18 project system).
+         DependenciesTree is what makes the Add Reference command appear in Solution Explorer. -->
+    <ProjectCapability Include="ProjectReferences" />
+    <ProjectCapability Include="DependenciesTree" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -38,7 +43,12 @@
     <OutDir Condition="'$(OutDir)' == ''">$(MSBuildProjectDirectory)\bin\$(Configuration)\</OutDir>
     <OutDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(OutDir)'))</OutDir>
     <TargetName Condition="'$(TargetName)' == ''">$(MSBuildProjectName)</TargetName>
-    <TargetPath Condition="'$(TargetPath)' == ''">$(OutDir)$(TargetName).exe</TargetPath>
+    <!-- What the project builds: Exe (default), Dll or Lib (static library). Selects -build-mode: and the output extension. -->
+    <OdinOutputType Condition="'$(OdinOutputType)' == ''">Exe</OdinOutputType>
+    <TargetExt Condition="'$(TargetExt)' == '' and '$(OdinOutputType)' == 'Dll'">.dll</TargetExt>
+    <TargetExt Condition="'$(TargetExt)' == '' and '$(OdinOutputType)' == 'Lib'">.lib</TargetExt>
+    <TargetExt Condition="'$(TargetExt)' == ''">.exe</TargetExt>
+    <TargetPath Condition="'$(TargetPath)' == ''">$(OutDir)$(TargetName)$(TargetExt)</TargetPath>
     <TargetPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(TargetPath)'))</TargetPath>
     <!-- odin writes the PDB next to -out: with the same name, so it follows TargetPath and is not a separate setting. -->
     <_OdinPdbPath>$([System.IO.Path]::ChangeExtension('$(TargetPath)', '.pdb'))</_OdinPdbPath>
@@ -56,22 +66,126 @@
   <!-- A -debug build also produces a PDB, so a missing PDB must trigger a rebuild. -->
   <ItemGroup>
     <_OdinPdbOutput Include="$(_OdinPdbPath)" Condition="'$(OdinDebug)' == 'true'" />
+    <!-- A DLL build also writes its import library next to it. -->
+    <_OdinImportLibOutput Include="$([System.IO.Path]::ChangeExtension('$(TargetPath)', '.lib'))" Condition="'$(OdinOutputType)' == 'Dll'" />
   </ItemGroup>
 
-  <!-- Inputs are the project's own file list plus the project file (a flag change in the .odinproj must rebuild; a /p: override does not).
-       Files reached through collections are not tracked yet; that comes with references (M6). -->
-  <Target Name="Build" Inputs="@(OdinCompile);$(MSBuildProjectFullPath)" Outputs="$(TargetPath);@(_OdinPdbOutput)">
+  <!-- References. MSBuild/VS order the builds through ProjectReference; the Core resolver (OdinReferenceResolver) does the rest: transitive
+       collections for Source references, link inputs for Link references, cycle and duplicate-name errors.
+       ProjectReference metadata: ReferenceKind = Source (default for .odinproj) or Link (default for .vcxproj). -->
+  <UsingTask TaskName="OdinVS.Core.OdinResolveReferences" AssemblyFile="$(MSBuildThisFileDirectory)tools\OdinVS.Core.dll" />
+
+  <PropertyGroup>
+    <!-- Consumers write import "<OdinCollectionName>:<path under OdinCollectionRoot>". -->
+    <OdinCollectionName Condition="'$(OdinCollectionName)' == ''">$(MSBuildProjectName)</OdinCollectionName>
+    <OdinCollectionRoot Condition="'$(OdinCollectionRoot)' == ''">$(MSBuildProjectDirectory)</OdinCollectionRoot>
+    <OdinCollectionRoot>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(OdinCollectionRoot)'))</OdinCollectionRoot>
+    <!-- File that Link references of this project link against (empty for projects that produce none). A Dll is linked through the import library odin writes next to it; a Lib is its own link input. -->
+    <OdinLinkLibrary Condition="'$(OdinLinkLibrary)' == '' and '$(OdinOutputType)' == 'Dll'">$([System.IO.Path]::ChangeExtension('$(TargetPath)', '.lib'))</OdinLinkLibrary>
+    <OdinLinkLibrary Condition="'$(OdinLinkLibrary)' == '' and '$(OdinOutputType)' == 'Lib'">$(TargetPath)</OdinLinkLibrary>
+  </PropertyGroup>
+
+  <!-- Returns this project's node plus the nodes of everything it references (MSBuild recurses; results are cached per project, so a
+       diamond or a 100-project chain costs one evaluation each). A cycle ends in MSBuild's own circular-dependency error here. -->
+  <Target Name="_OdinClassifyReferences">
+    <ItemGroup>
+      <_OdinOdinRef Include="@(ProjectReference)" Condition="'%(Extension)' == '.odinproj'" />
+      <_OdinNativeRef Include="@(ProjectReference)" Condition="'%(Extension)' == '.vcxproj'" />
+      <_OdinOdinRef Update="@(_OdinOdinRef)" Condition="'%(_OdinOdinRef.ReferenceKind)' == ''" ReferenceKind="Source" />
+      <_OdinNativeRef Update="@(_OdinNativeRef)" Condition="'%(_OdinNativeRef.ReferenceKind)' == ''" ReferenceKind="Link" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="OdinGetReferenceInfo" DependsOnTargets="_OdinClassifyReferences" Returns="@(OdinReferenceNode)">
+    <MSBuild Projects="@(_OdinOdinRef)" Targets="OdinGetReferenceInfo" Condition="'@(_OdinOdinRef)' != ''">
+      <Output TaskParameter="TargetOutputs" ItemName="_OdinNestedNode" />
+    </MSBuild>
+    <MSBuild Projects="@(_OdinNativeRef)" Targets="GetTargetPath" Condition="'@(_OdinNativeRef)' != ''">
+      <Output TaskParameter="TargetOutputs" ItemName="_OdinNativeOutput" />
+    </MSBuild>
+    <ItemGroup>
+      <!-- A native DLL is linked through its import library, which sits next to it. -->
+      <OdinReferenceNode Include="%(_OdinNativeOutput.MSBuildSourceProjectFile)">
+        <Name>$([System.IO.Path]::GetFileNameWithoutExtension('%(_OdinNativeOutput.MSBuildSourceProjectFile)'))</Name>
+        <IsNative>true</IsNative>
+        <LinkLibrary Condition="'%(_OdinNativeOutput.Extension)' == '.dll'">$([System.IO.Path]::ChangeExtension('%(_OdinNativeOutput.FullPath)', '.lib'))</LinkLibrary>
+        <LinkLibrary Condition="'%(_OdinNativeOutput.Extension)' != '.dll'">%(_OdinNativeOutput.FullPath)</LinkLibrary>
+      </OdinReferenceNode>
+      <OdinReferenceNode Include="@(_OdinNestedNode)" />
+      <OdinReferenceNode Include="$(MSBuildProjectFullPath)">
+        <Name>$(MSBuildProjectName)</Name>
+        <CollectionName>$(OdinCollectionName)</CollectionName>
+        <CollectionRoot>$(OdinCollectionRoot)</CollectionRoot>
+        <LinkLibrary>$(OdinLinkLibrary)</LinkLibrary>
+        <IsNative>false</IsNative>
+        <References>@(_OdinOdinRef->'%(ReferenceKind)|%(FullPath)');@(_OdinNativeRef->'%(ReferenceKind)|%(FullPath)')</References>
+        <Sources>@(OdinCompile->'%(FullPath)')</Sources>
+      </OdinReferenceNode>
+    </ItemGroup>
+  </Target>
+
+  <!-- CPS reads the resolved project references (Dependencies node, Add Reference) from these design-time targets; for Odin a reference
+       resolves to the referenced project itself. -->
+  <Target Name="ResolveProjectReferencesDesignTime" Returns="@(_OdinResolvedProjectReference)">
+    <ItemGroup>
+      <_OdinResolvedProjectReference Include="%(ProjectReference.FullPath)">
+        <OriginalItemSpec>%(ProjectReference.Identity)</OriginalItemSpec>
+        <OriginalProjectReferenceItemSpec>%(ProjectReference.Identity)</OriginalProjectReferenceItemSpec>
+      </_OdinResolvedProjectReference>
+    </ItemGroup>
+  </Target>
+  <Target Name="ResolveProjectReferencesDesignTime2" DependsOnTargets="ResolveProjectReferencesDesignTime" Returns="@(_OdinResolvedProjectReference)" />
+
+  <!-- Link references must exist before this project links; Source references never need building. -->
+  <Target Name="OdinBuildLinkReferences" DependsOnTargets="_OdinClassifyReferences">
+    <ItemGroup>
+      <_OdinLinkRef Include="@(_OdinOdinRef->WithMetadataValue('ReferenceKind', 'Link'));@(_OdinNativeRef->WithMetadataValue('ReferenceKind', 'Link'))" />
+    </ItemGroup>
+    <MSBuild Projects="@(_OdinLinkRef)" Targets="Build" Condition="'@(_OdinLinkRef)' != ''" />
+  </Target>
+
+  <Target Name="OdinResolveReferences" DependsOnTargets="OdinBuildLinkReferences;OdinGetReferenceInfo">
+    <OdinResolveReferences ProjectPath="$(MSBuildProjectFullPath)" Nodes="@(OdinReferenceNode)">
+      <Output TaskParameter="Collections" ItemName="OdinCollection" />
+      <Output TaskParameter="LinkInputs" ItemName="OdinLinkInput" />
+      <Output TaskParameter="Sources" ItemName="OdinReferencedSource" />
+    </OdinResolveReferences>
+  </Target>
+
+  <!-- Inputs are the project's own file list, the sources of Source-referenced projects (a consumer recompiles them), Link inputs and
+       the project file (a flag change in the .odinproj must rebuild; a /p: override does not). -->
+  <Target Name="_OdinCheckOutputType">
+    <Error Condition="'$(OdinOutputType)' != 'Exe' and '$(OdinOutputType)' != 'Dll' and '$(OdinOutputType)' != 'Lib'"
+           Code="ODIN0106" Text="OdinOutputType '$(OdinOutputType)' is not valid. Use Exe, Dll or Lib." />
+  </Target>
+
+  <Target Name="Build" DependsOnTargets="_OdinCheckOutputType;OdinResolveReferences;_OdinCompile;_OdinCopyRuntimeDlls" />
+
+  <Target Name="_OdinCompile" DependsOnTargets="_OdinCheckOutputType;OdinResolveReferences" Inputs="@(OdinCompile);@(OdinReferencedSource);@(OdinLinkInput);$(MSBuildProjectFullPath)" Outputs="$(TargetPath);@(_OdinPdbOutput);@(_OdinImportLibOutput)">
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))" />
     <OdinBuild OdinExe="$(OdinExe)"
                PackageDirectory="$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(OdinPackageDir)'))"
+               WorkingDirectory="$(MSBuildProjectDirectory)"
                OutputPath="$(TargetPath)"
+               OutputType="$(OdinOutputType)"
                Debug="$(OdinDebug)"
                Collections="@(OdinCollection)"
+               LinkInputs="@(OdinLinkInput)"
                ExtraArguments="$(OdinExtraArgs)" />
   </Target>
 
+  <!-- A DLL linked through its import library must sit next to the exe at run time (what a C++ project reference does as "copy local"). This runs on every build, outside the up-to-date check of _OdinCompile, so a deleted or stale copy is restored; the DLL's PDB comes along when it exists. -->
+  <Target Name="_OdinCopyRuntimeDlls" DependsOnTargets="OdinResolveReferences">
+    <ItemGroup>
+      <_OdinRuntimeDll Include="@(OdinLinkInput->WithMetadataValue('Extension', '.lib')->'%(RootDir)%(Directory)%(Filename).dll')" />
+      <_OdinRuntimeDll Include="@(_OdinRuntimeDll->'%(RootDir)%(Directory)%(Filename).pdb')" />
+      <_OdinRuntimeDll Remove="@(_OdinRuntimeDll)" Condition="!Exists('%(_OdinRuntimeDll.FullPath)')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OdinRuntimeDll)" DestinationFolder="$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))" SkipUnchangedFiles="true" Condition="'@(_OdinRuntimeDll)' != ''" />
+  </Target>
+
   <Target Name="Clean">
-    <Delete Files="$(TargetPath);$(_OdinPdbPath)" />
+    <Delete Files="$(TargetPath);$(_OdinPdbPath);@(_OdinImportLibOutput)" />
   </Target>
 
   <Target Name="Rebuild" DependsOnTargets="Clean;Build" />
@@ -82,6 +196,9 @@
     </PropertyPageSchema>
     <PropertyPageSchema Include="$(OdinRulesDir)OdinGeneral.BrowseObject.xaml">
       <Context>BrowseObject</Context>
+    </PropertyPageSchema>
+    <PropertyPageSchema Include="$(OdinRulesDir)OdinCollections.xaml">
+      <Context>Project</Context>
     </PropertyPageSchema>
     <!-- Debug selection: VS's own DebuggerGeneralProperties rule (holds DebuggerFlavor) plus our debugger rule. -->
     <PropertyPageSchema Include="$(MSBuildExtensionsPath)\Microsoft\VisualStudio\Managed\DebuggerGeneral.xaml">
@@ -95,6 +212,13 @@
     </PropertyPageSchema>
     <PropertyPageSchema Include="$(OdinRulesDir)OdinCompile.BrowseObject.xaml">
       <Context>BrowseObject</Context>
+    </PropertyPageSchema>
+    <!-- VS's own rules for ProjectReference items and their resolved form. -->
+    <PropertyPageSchema Include="$(MSBuildExtensionsPath)\Microsoft\VisualStudio\Managed\ProjectReference.xaml">
+      <Context>Project;BrowseObject</Context>
+    </PropertyPageSchema>
+    <PropertyPageSchema Include="$(MSBuildExtensionsPath)\Microsoft\VisualStudio\Managed\ResolvedProjectReference.xaml">
+      <Context>ProjectSubscriptionService;BrowseObject</Context>
     </PropertyPageSchema>
   </ItemGroup>
 </Project>

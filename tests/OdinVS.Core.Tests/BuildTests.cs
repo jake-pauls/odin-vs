@@ -88,7 +88,7 @@ public sealed class OdinBuildArgumentsTests
 {
     private static OdinBuildOptions Options(bool debug, string extra = "", params KeyValuePair<string, string>[] collections)
     {
-        return new OdinBuildOptions(@"C:\p\src", @"C:\p\bin\Debug\p.exe", debug, collections, extra);
+        return new OdinBuildOptions(@"C:\p\src", @"C:\p\bin\Debug\p.exe", debug, collections, [], extra);
     }
 
     [TestMethod]
@@ -108,7 +108,7 @@ public sealed class OdinBuildArgumentsTests
     [TestMethod]
     public void QuotesPathsWithSpacesAndTrimsTrailingSlash()
     {
-        OdinBuildOptions options = new(@"C:\my proj\src\", @"C:\my proj\out.exe", false, [], "");
+        OdinBuildOptions options = new(@"C:\my proj\src\", @"C:\my proj\out.exe", false, [], [], "");
         Assert.AreEqual("""build "C:\my proj\src" "-out:C:\my proj\out.exe" -strict-style -json-errors""", OdinBuildArguments.Build(options));
     }
 
@@ -118,5 +118,51 @@ public sealed class OdinBuildArgumentsTests
         string arguments = OdinBuildArguments.Build(Options(true, " -vet ", new KeyValuePair<string, string>("lib", @"C:\libs\lib\")));
         Assert.Contains(@"-collection:lib=C:\libs\lib ", arguments + " ");
         Assert.EndsWith("-json-errors -vet", arguments);
+    }
+
+    [TestMethod]
+    public void LinkInputsGoToTheLinkerWithTheirFoldersAsLibPaths()
+    {
+        OdinBuildOptions options = new(@"C:\p\src", @"C:\p\p.exe", false, [], [@"C:\n\a.lib", @"C:\n\b.lib", @"C:\m\c.lib"], "");
+        string arguments = OdinBuildArguments.Build(options);
+        Assert.Contains("\"-extra-linker-flags:/LIBPATH:C:\\n /LIBPATH:C:\\m /DEFAULTLIB:a.lib /DEFAULTLIB:b.lib /DEFAULTLIB:c.lib\" ", arguments);
+        Assert.IsLessThan(arguments.IndexOf("-json-errors", StringComparison.Ordinal), arguments.IndexOf("-extra-linker-flags", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void ALinkInputWithSpacesIsPassedRelativeToTheWorkingDirectory()
+    {
+        OdinBuildOptions options = new(@"C:\my work\p\src", @"C:\my work\p\p.exe", false, [], [@"C:\my work\lib\bin\b.lib"], "", "Exe", @"C:\my work\p");
+        string arguments = OdinBuildArguments.Build(options);
+        Assert.Contains("\"-extra-linker-flags:/LIBPATH:..\\lib\\bin /DEFAULTLIB:b.lib\" ", arguments);
+    }
+
+    [TestMethod]
+    public void ALinkInputWithSpacesCanStayWhitespacedAfterRelativizing()
+    {
+        Assert.IsTrue(OdinBuildArguments.HasWhitespace(OdinBuildArguments.ToLinkerPath(@"C:\a b\x.lib", @"D:\p")));
+        Assert.IsTrue(OdinBuildArguments.HasWhitespace(OdinBuildArguments.ToLinkerPath(@"C:\a b\x.lib", @"C:\p")));
+    }
+
+    [TestMethod]
+    [DataRow("Dll", "-build-mode:dll")]
+    [DataRow("dll", "-build-mode:dll")]
+    [DataRow("Lib", "-build-mode:lib")]
+    public void OutputTypeSelectsTheBuildMode(string outputType, string flag)
+    {
+        OdinBuildOptions options = new(@"C:\p\src", @"C:\p\p.dll", false, [], [], "", outputType);
+        Assert.Contains(" " + flag + " ", OdinBuildArguments.Build(options) + " ");
+    }
+
+    [TestMethod]
+    public void AnExecutableAddsNoBuildMode()
+    {
+        Assert.DoesNotContain("-build-mode", OdinBuildArguments.Build(Options(false)));
+    }
+
+    [TestMethod]
+    public void NoLinkInputsAddNoLinkerFlag()
+    {
+        Assert.DoesNotContain("-extra-linker-flags", OdinBuildArguments.Build(Options(false)));
     }
 }

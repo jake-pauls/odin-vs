@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Publishes the evaluated collection name and root of a project to the project system (OdinCollectionSubscriber reads them for the
+     language server). The properties are defined in Sdk.targets; this rule only makes CPS track their evaluated values. -->
+<Rule Name="OdinCollections"
+      DisplayName="Collection"
+      PageTemplate="generic"
+      PropertyPagesHidden="true"
+      xmlns="http://schemas.microsoft.com/build/2009/properties">
+  <Rule.DataSource>
+    <DataSource Persistence="ProjectFile"
+                HasConfigurationCondition="False"
+                SourceOfDefaultValue="AfterContext" />
+  </Rule.DataSource>
+
+  <StringProperty Name="OdinCollectionName" DisplayName="Collection name" />
+  <StringProperty Name="OdinCollectionRoot" DisplayName="Collection root" />
+</Rule>
