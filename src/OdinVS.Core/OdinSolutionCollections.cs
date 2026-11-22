@@ -13,8 +13,6 @@ public sealed record OdinSolutionCollectionsResult(
 // (OlsCollectionTests), so this is the union; build-time collections still come from the reference graph.
 public static class OdinSolutionCollections
 {
-    public const string DuplicateCode = "ODIN0103";
-
     // Sorted by project path so the first project keeps a contested name, the same way on every run.
     public static OdinSolutionCollectionsResult Compute(IEnumerable<OdinProjectCollection> projects)
     {
@@ -28,7 +26,7 @@ public static class OdinSolutionCollections
             {
                 if (!string.Equals(owner, root, StringComparison.OrdinalIgnoreCase))
                 {
-                    problems.Add(new OdinReferenceProblem(DuplicateCode, $"collection name '{project.Name}' is used by two projects ('{owner}' and '{root}'). Give each project a different OdinCollectionName (the default is the project name), or remove the OdinCollectionName that makes them match."));
+                    problems.Add(new OdinReferenceProblem(OdinDiagnosticCodes.DuplicateCollectionName, $"collection name '{project.Name}' is used by two projects ('{owner}' and '{root}'). Give each project a different OdinCollectionName (the default is the project name), or remove the OdinCollectionName that makes them match."));
                 }
 
                 continue;

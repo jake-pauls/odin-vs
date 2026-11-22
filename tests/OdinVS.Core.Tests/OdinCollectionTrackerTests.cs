@@ -79,7 +79,7 @@ public sealed class OdinCollectionTrackerTests
         tracker.Set(@"C:\s\A.odinproj", "A", @"C:\s\A");
         tracker.Current();
         Assert.AreEqual(1, CountEvents(tracker, () => tracker.Set(@"C:\s\B.odinproj", "A", @"C:\s\B"), expected: 1, problems: true));
-        Assert.AreEqual(OdinSolutionCollections.DuplicateCode, tracker.Problems.Single().Code);
+        Assert.AreEqual(OdinDiagnosticCodes.DuplicateCollectionName, tracker.Problems.Single().Code);
 
         Assert.AreEqual(1, CountEvents(tracker, () => tracker.Set(@"C:\s\B.odinproj", "B", @"C:\s\B"), expected: 1, problems: true));
         Assert.IsEmpty(tracker.Problems);
