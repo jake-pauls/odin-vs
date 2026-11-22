@@ -65,6 +65,19 @@ public sealed class LinkTargetTests
     }
 
     [TestMethod]
+    public void TheGraphWalkPassesTheConfigurationToReferencedProjects()
+    {
+        // The walk asks each referenced project for its node through the build engine; if the Release setting did not reach
+        // LinkDll, its library would be looked up under bin\Debug and the link would fail.
+        string work = MsBuildSandbox.Instance.CopySamples("LinkApp", "LinkDll");
+        MsBuildResult build = Build(work, "LinkApp", "Build", "Configuration=Release");
+        Assert.AreEqual(0, build.ExitCode, build.Output);
+        StringAssert.Contains(build.Output, @"LinkDll\bin\Release");
+        Assert.IsTrue(File.Exists(Path.Combine(work, "LinkApp", "bin", "Release", "LinkApp.exe")), build.Output);
+        Assert.IsFalse(Directory.Exists(Path.Combine(work, "LinkDll", "bin", "Debug")), "nothing may be built for Debug");
+    }
+
+    [TestMethod]
     public void LinkingWorksWhenTheProjectsLiveInAFolderWithSpaces()
     {
         // odin splits -extra-linker-flags on spaces, so the task passes the library relative to the project folder.

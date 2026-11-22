@@ -18,4 +18,5 @@ public static class OdinDiagnosticCodes
     public const string InvalidOutputType = "ODIN0106";
     public const string LinkPathHasSpaces = "ODIN0107";
     public const string DuplicateLibraryName = "ODIN0108";
+    public const string HostCannotWalkReferences = "ODIN0109";
 }
