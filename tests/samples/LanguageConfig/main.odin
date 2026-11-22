@@ -3,7 +3,7 @@ package main
 import "core:fmt"
 
 // Manual language-configuration checks (M5). Open this file in Exp, put the caret where each line says and type the text
-// after "type:". Record what happened in docs/milestones.md. Do not save edits to this file.
+// after "type:". Record what happened in docs/internal/milestones.md. Do not save edits to this file.
 //
 // wordPattern / completion span (ols completions; the replaced span comes from ols's textEdit):
 //   W1  line 21: type "pri" after "fmt." -> Tab      expect the top item (print or println), nothing left over before "fmt."

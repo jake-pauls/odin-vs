@@ -19,4 +19,4 @@ Why: VS decides which files a grammar applies to from the grammar's own `fileTyp
 ## Updating the grammar
 1. Pick a new commit that touched the file and fetch it: `gh api -H "Accept: application/vnd.github.raw" "repos/DanielGavin/ols/contents/editors/vscode/syntaxes/odin.tmLanguage.json?ref=<sha>"`.
 2. Diff it against the checked-in file; the only expected difference is the tagged `ODIN-VS` `fileTypes` block plus whatever upstream changed.
-3. Re-apply the tagged `fileTypes` block, update the SHA, date and both hashes here, and the commit and date in `THIRD-PARTY-NOTICES.md`, then re-run the fixture check from `docs/milestones.md` (M1) under Light and Dark.
+3. Re-apply the tagged `fileTypes` block, update the SHA, date and both hashes here, and the commit and date in `THIRD-PARTY-NOTICES.md`, then re-run the fixture check from `docs/internal/milestones.md` (M1) under Light and Dark.

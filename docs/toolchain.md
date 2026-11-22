@@ -7,7 +7,7 @@ Referenced from `CLAUDE.md`. Facts verified on this machine; re-verify when Odin
   - `-json-errors`: structured diagnostics (see finding 8).
   - `-export-dependencies:json` + `-export-dependencies-file:<f>`: the compiler lists every source file it used, so incremental-build inputs can come from the previous build rather than from globs (also covers sources reached through collections).
   - `-show-import-graph`: DOT import graph, useful for debugging reference closures.
-  - `-debug` implies `-o:none`; `-pdb-name` controls the PDB name; `-build-mode` supports `lib`/`static`, `dll`, `obj`, `test`; `-collection:name=path` is available for `import "name:pkg"` and `foreign import`.
+  - `-debug` implies `-o:none`; `-pdb-name` controls the PDB name; `-build-mode` supports `lib`/`static`, `dll`, `obj`, `test` (`lib` fails to link on Windows with `dev-2026-10`; see pitfalls); `-collection:name=path` is available for `import "name:pkg"` and `foreign import`.
   - `-error-pos-style:unix` exists but is also not MSBuild canonical.
 - **Captured with the samples** (the two throwaway sample packages `samples/HelloOdin` and `samples/HelloLib`, removed from the repo; see commit `3e00cc6`; `HelloOdin` imported `hellolib:greeter` from `HelloLib`; build with `-collection:hellolib=<samples>\HelloLib`):
   - Good build with `-debug` produces `hello.exe` plus `hello.pdb` in the `-out` directory and runs correctly. `-collection` and `-export-dependencies` work together.
