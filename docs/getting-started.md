@@ -2,6 +2,7 @@
 
 From a clone to a running Odin project in Visual Studio. Allow about 15 minutes. There is no published release, so you build the extension yourself.
 
+> [!WARNING]
 > **Experimental, personal software.** It is side-loaded into your own Visual Studio and has had one user. It was built with a lot of AI assistance (see the README). Read what you run: the build uses MSBuild targets, PowerShell scripts and a bundled `ols.exe` that come from this repository.
 
 ## 1. What you need

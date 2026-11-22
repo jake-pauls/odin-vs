@@ -2,8 +2,9 @@
 
 Odin language support for **Visual Studio 2026** (18.x): `.odinproj` projects that sit in a normal `.sln`/`.slnx` next to C# and C++ projects, builds through the real `odin` compiler, editor support from the bundled `ols` language server, and debugger displays for Odin values.
 
+> [!WARNING]
 > **Experimental, personal software.** This is a side-loaded extension built for one person's own use. There is no published release and no Marketplace listing, and the `Odin.Sdk` MSBuild package it needs is **local only** (it is built on your machine and never published). It is provided as is, under the MIT license, with no support promised. Building, debugging or even opening a solution runs MSBuild and your code, so treat untrusted `.odinproj` and `.odin` files like any untrusted project. Not affiliated with the Odin project, `ols`, or Microsoft.
-
+>
 > **Built with AI assistance.** This project began as an experiment in an AI-assisted workflow. I set the requirements, made the design decisions and reviewed the results, but most of the code was written by Claude (Anthropic's AI model). The commit history and pull requests show that process. Expect the quality, and the bugs, of that approach: review the code before you trust it.
 
 ## What works today
