@@ -20,7 +20,7 @@ param(
     [int]$Count = 100,
     [ValidateSet('Tree', 'Chain', 'Flat')][string]$Shape = 'Tree',
     [string]$OutputDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) 'stress'),
-    [string]$SdkVersion = '0.5.0-local',
+    [string]$SdkVersion = '0.5.1-local',
     [switch]$Measure
 )
 
