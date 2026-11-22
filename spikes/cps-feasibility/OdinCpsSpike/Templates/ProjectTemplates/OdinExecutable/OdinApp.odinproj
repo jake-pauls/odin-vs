@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <!-- Spike only: real distribution needs a defined $(OdinTargetsPath) (CLAUDE.md, finding 6). -->
-    <OdinTargetsPath Condition="'$(OdinTargetsPath)' == ''">D:\Projects\Vibe\odin-vs\spikes\cps-feasibility\sample\odin-build\</OdinTargetsPath>
+    <OdinTargetsPath Condition="'$(OdinTargetsPath)' == ''">C:\path\to\odin-vs\spikes\cps-feasibility\sample\odin-build\</OdinTargetsPath>
     <Configurations>Debug;Release</Configurations>
     <Platforms>x64</Platforms>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>

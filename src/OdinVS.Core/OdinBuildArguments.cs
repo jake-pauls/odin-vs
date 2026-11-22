@@ -97,6 +97,13 @@ internal static class OdinBuildArguments
         return string.Join("\\", segments);
     }
 
+    // A collection name or root, or a library path, goes into one command-line argument; a double quote or control character in it
+    // would split or inject arguments, so such values are rejected before the command is built (ODIN0110).
+    public static bool IsSafeArgumentValue(string value)
+    {
+        return value.Length > 0 && value.All(character => character != '"' && !char.IsControl(character));
+    }
+
     public static bool HasWhitespace(string value)
     {
         return value.IndexOfAny([' ', '\t']) >= 0;

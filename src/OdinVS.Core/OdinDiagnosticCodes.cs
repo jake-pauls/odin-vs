@@ -1,6 +1,6 @@
 namespace OdinVS.Core;
 
-// The one place an ODINnnnn diagnostic code is defined. The table in docs/user-guide.md lists the same codes (DiagnosticCodesTests keeps
+// The one place an ODINnnnn diagnostic code is defined. The table in docs/reference/diagnostics.md lists the same codes (DiagnosticCodesTests keeps
 // the table, this class and the literal in Sdk.targets from drifting). Numbering: compile errors and warnings 000x, reference and project
 // problems 01xx.
 public static class OdinDiagnosticCodes
@@ -19,4 +19,5 @@ public static class OdinDiagnosticCodes
     public const string LinkPathHasSpaces = "ODIN0107";
     public const string DuplicateLibraryName = "ODIN0108";
     public const string HostCannotWalkReferences = "ODIN0109";
+    public const string InvalidCollection = "ODIN0110";
 }
