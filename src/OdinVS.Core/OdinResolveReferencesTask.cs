@@ -4,7 +4,7 @@ using Microsoft.Build.Utilities;
 namespace OdinVS.Core;
 
 // Public because MSBuild instantiates tasks by reflection. The graph walk itself is OdinReferenceResolver (unit-tested).
-// Nodes come from the OdinGetReferenceInfo target of every referenced project: identity = project path, metadata as read below.
+// Nodes come from OdinWalkReferences (OdinGetNodeInfo of every project in the graph): identity = project path, metadata as read below.
 public sealed class OdinResolveReferences : Microsoft.Build.Utilities.Task
 {
     [Required]

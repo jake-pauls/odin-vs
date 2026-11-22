@@ -101,7 +101,7 @@ public sealed class OdinReferenceResolverTests
         OdinResolvedReferences result = OdinReferenceResolver.Resolve(PathOf("App"), [Odin("App", Link("Lib")), Odin("Lib")]);
 
         Assert.HasCount(1, result.Problems);
-        Assert.AreEqual(OdinReferenceResolver.NoLibraryCode, result.Problems[0].Code);
+        Assert.AreEqual(OdinDiagnosticCodes.NoLibraryToLink, result.Problems[0].Code);
         StringAssert.Contains(result.Problems[0].Message, "'Lib' produces no library");
     }
 
@@ -113,7 +113,7 @@ public sealed class OdinReferenceResolverTests
         OdinResolvedReferences result = OdinReferenceResolver.Resolve(PathOf("App"), [Odin("App", Link(a.ProjectPath), Link(b.ProjectPath)), a, b]);
 
         Assert.HasCount(1, result.Problems);
-        Assert.AreEqual(OdinReferenceResolver.DuplicateLibraryCode, result.Problems[0].Code);
+        Assert.AreEqual(OdinDiagnosticCodes.DuplicateLibraryName, result.Problems[0].Code);
         StringAssert.Contains(result.Problems[0].Message, "TargetName");
     }
 
@@ -134,7 +134,7 @@ public sealed class OdinReferenceResolverTests
             [Odin("A", Src("B")), Odin("B", Src("C")), Odin("C", Src("A"))]);
 
         Assert.HasCount(1, result.Problems);
-        Assert.AreEqual(OdinReferenceResolver.CycleCode, result.Problems[0].Code);
+        Assert.AreEqual(OdinDiagnosticCodes.CircularReference, result.Problems[0].Code);
         StringAssert.Contains(result.Problems[0].Message, "A -> B -> C -> A");
     }
 
@@ -164,7 +164,7 @@ public sealed class OdinReferenceResolverTests
     {
         OdinResolvedReferences result = OdinReferenceResolver.Resolve(PathOf("A"), [Odin("A", Link("B")), Odin("B", Src("A"))]);
 
-        Assert.AreEqual(OdinReferenceResolver.CycleCode, result.Problems.Single().Code);
+        Assert.AreEqual(OdinDiagnosticCodes.CircularReference, result.Problems.Single().Code);
     }
 
     [TestMethod]
@@ -176,7 +176,7 @@ public sealed class OdinReferenceResolverTests
             [Odin("App", Src("Left"), Src("Other")), Odin("Left"), other]);
 
         Assert.HasCount(1, result.Problems);
-        Assert.AreEqual(OdinReferenceResolver.DuplicateCollectionCode, result.Problems[0].Code);
+        Assert.AreEqual(OdinDiagnosticCodes.DuplicateCollectionName, result.Problems[0].Code);
         StringAssert.Contains(result.Problems[0].Message, "'left'");
     }
 
@@ -185,7 +185,7 @@ public sealed class OdinReferenceResolverTests
     {
         OdinResolvedReferences result = OdinReferenceResolver.Resolve(PathOf("App"), [Odin("App", Src("Missing"))]);
 
-        Assert.AreEqual(OdinReferenceResolver.UnresolvedReferenceCode, result.Problems.Single().Code);
+        Assert.AreEqual(OdinDiagnosticCodes.UnresolvedReference, result.Problems.Single().Code);
     }
 
     [TestMethod]

@@ -39,6 +39,9 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
     {
         m_Log.Write($"collection subscriber loaded for {m_Project.FullPath}");
         // UnloadAsync is not called when a project is removed from the solution (seen in Exp), the project's own event is.
+        // A second LoadAsync (defensive) must not leave the first link or handler behind.
+        m_Project.ProjectUnloading -= OnProjectUnloadingAsync;
+        m_Link?.Dispose();
         lock (m_Gate)
         {
             m_Released = false;

@@ -58,11 +58,9 @@ public sealed class ReferenceTargetTests
         string work = MsBuildSandbox.Instance.CopySamples("RefCycleA", "RefCycleB");
         MsBuildResult result = Build(work, "RefCycleA");
         Assert.AreNotEqual(0, result.ExitCode, result.Output);
-        // On the command line MSBuild's own recursion guard fires before the Core resolver can run (ODIN0102 with the arrow path is
-        // what Add Reference shows). Its summary still lists the projects of the loop in order.
-        StringAssert.Contains(result.Output, "MSB4006");
-        StringAssert.Contains(result.Output, "RefCycleB.odinproj\" (OdinGetReferenceInfo target)");
-        StringAssert.Contains(result.Output, "RefCycleA.odinproj\" (OdinGetReferenceInfo target)");
+        StringAssert.Contains(result.Output, "ODIN0102");
+        StringAssert.Contains(result.Output, "RefCycleA -> RefCycleB -> RefCycleA");
+        Assert.DoesNotContain("MSB4006", result.Output, "the graph walk must not recurse through MSBuild");
         Assert.IsFalse(File.Exists(Exe(work, "RefCycleA")));
     }
 

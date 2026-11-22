@@ -52,6 +52,9 @@
     <TargetPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(TargetPath)'))</TargetPath>
     <!-- odin writes the PDB next to -out: with the same name, so it follows TargetPath and is not a separate setting. -->
     <_OdinPdbPath>$([System.IO.Path]::ChangeExtension('$(TargetPath)', '.pdb'))</_OdinPdbPath>
+    <!-- The FileWrites idea of C# and C++ projects, kept in obj\ (never in the output folder, so nothing extra ships with the app): lists the
+         DLLs/PDBs copied next to the exe from Link references, so Clean can remove them. -->
+    <_OdinCopiedListPath>$(MSBuildProjectDirectory)\obj\$(Configuration)\$(MSBuildProjectName).FileListAbsolute.txt</_OdinCopiedListPath>
     <!-- Default: -debug (emits the PDB, implies -o:none) only for the Debug configuration. Set OdinDebug in the .odinproj to change it. -->
     <OdinDebug Condition="'$(OdinDebug)' == '' and '$(Configuration)' == 'Debug'">true</OdinDebug>
     <OdinDebug Condition="'$(OdinDebug)' == ''">false</OdinDebug>
@@ -74,6 +77,7 @@
        collections for Source references, link inputs for Link references, cycle and duplicate-name errors.
        ProjectReference metadata: ReferenceKind = Source (default for .odinproj) or Link (default for .vcxproj). -->
   <UsingTask TaskName="OdinVS.Core.OdinResolveReferences" AssemblyFile="$(MSBuildThisFileDirectory)tools\OdinVS.Core.dll" />
+  <UsingTask TaskName="OdinVS.Core.OdinWalkReferences" AssemblyFile="$(MSBuildThisFileDirectory)tools\OdinVS.Core.dll" />
 
   <PropertyGroup>
     <!-- Consumers write import "<OdinCollectionName>:<path under OdinCollectionRoot>". -->
@@ -85,8 +89,6 @@
     <OdinLinkLibrary Condition="'$(OdinLinkLibrary)' == '' and '$(OdinOutputType)' == 'Lib'">$(TargetPath)</OdinLinkLibrary>
   </PropertyGroup>
 
-  <!-- Returns this project's node plus the nodes of everything it references (MSBuild recurses; results are cached per project, so a
-       diamond or a 100-project chain costs one evaluation each). A cycle ends in MSBuild's own circular-dependency error here. -->
   <!-- Built on its own (no solution), the project's own Configuration/Platform defaults are not global properties, so a referenced
        .vcxproj would fall back to its own default (Win32). Pass ours then; inside VS or a solution the globals already flow through. -->
   <PropertyGroup Condition="'$(_OdinConfigurationDefaulted)' == 'true'">
@@ -102,10 +104,8 @@
     </ItemGroup>
   </Target>
 
-  <Target Name="OdinGetReferenceInfo" DependsOnTargets="_OdinClassifyReferences" Returns="@(OdinReferenceNode)">
-    <MSBuild Projects="@(_OdinOdinRef)" Targets="OdinGetReferenceInfo" Condition="'@(_OdinOdinRef)' != ''">
-      <Output TaskParameter="TargetOutputs" ItemName="_OdinNestedNode" />
-    </MSBuild>
+  <!-- Returns this project's own node plus the nodes of its native references; it does not recurse (OdinGetReferenceInfo walks the graph). -->
+  <Target Name="OdinGetNodeInfo" DependsOnTargets="_OdinClassifyReferences" Returns="@(OdinReferenceNode)">
     <MSBuild Projects="@(_OdinNativeRef)" Targets="GetTargetPath" Properties="$(_OdinReferenceProperties)" Condition="'@(_OdinNativeRef)' != ''">
       <Output TaskParameter="TargetOutputs" ItemName="_OdinNativeOutput" />
     </MSBuild>
@@ -117,7 +117,6 @@
         <LinkLibrary Condition="'%(_OdinNativeOutput.Extension)' == '.dll'">$([System.IO.Path]::ChangeExtension('%(_OdinNativeOutput.FullPath)', '.lib'))</LinkLibrary>
         <LinkLibrary Condition="'%(_OdinNativeOutput.Extension)' != '.dll'">%(_OdinNativeOutput.FullPath)</LinkLibrary>
       </OdinReferenceNode>
-      <OdinReferenceNode Include="@(_OdinNestedNode)" />
       <OdinReferenceNode Include="$(MSBuildProjectFullPath)">
         <Name>$(MSBuildProjectName)</Name>
         <CollectionName>$(OdinCollectionName)</CollectionName>
@@ -128,6 +127,14 @@
         <Sources>@(OdinCompile->'%(FullPath)')</Sources>
       </OdinReferenceNode>
     </ItemGroup>
+  </Target>
+
+  <!-- The whole reference graph, one level at a time (OdinWalkReferences): a cycle ends in the resolver's ODIN0102 path message rather than
+       MSBuild's circular-target error. -->
+  <Target Name="OdinGetReferenceInfo" DependsOnTargets="OdinGetNodeInfo" Returns="@(OdinGraphNode)">
+    <OdinWalkReferences ProjectPath="$(MSBuildProjectFullPath)" Nodes="@(OdinReferenceNode)">
+      <Output TaskParameter="AllNodes" ItemName="OdinGraphNode" />
+    </OdinWalkReferences>
   </Target>
 
   <!-- CPS reads the resolved project references (Dependencies node, Add Reference) from these design-time targets; for Odin a reference
@@ -150,8 +157,9 @@
     <MSBuild Projects="@(_OdinLinkRef)" Targets="Build" Properties="$(_OdinReferenceProperties)" Condition="'@(_OdinLinkRef)' != ''" />
   </Target>
 
-  <Target Name="OdinResolveReferences" DependsOnTargets="OdinBuildLinkReferences;OdinGetReferenceInfo">
-    <OdinResolveReferences ProjectPath="$(MSBuildProjectFullPath)" Nodes="@(OdinReferenceNode)">
+  <!-- The graph is resolved first, so a cycle is reported before any Link reference is built (building one would recurse into it). -->
+  <Target Name="OdinResolveReferences" DependsOnTargets="OdinGetReferenceInfo">
+    <OdinResolveReferences ProjectPath="$(MSBuildProjectFullPath)" Nodes="@(OdinGraphNode)">
       <Output TaskParameter="Collections" ItemName="OdinCollection" />
       <Output TaskParameter="LinkInputs" ItemName="OdinLinkInput" />
       <Output TaskParameter="Sources" ItemName="OdinReferencedSource" />
@@ -167,7 +175,7 @@
 
   <Target Name="Build" DependsOnTargets="_OdinCheckOutputType;OdinResolveReferences;_OdinCompile;_OdinCopyRuntimeDlls" />
 
-  <Target Name="_OdinCompile" DependsOnTargets="_OdinCheckOutputType;OdinResolveReferences" Inputs="@(OdinCompile);@(OdinReferencedSource);@(OdinLinkInput);$(MSBuildProjectFullPath)" Outputs="$(TargetPath);@(_OdinPdbOutput);@(_OdinImportLibOutput)">
+  <Target Name="_OdinCompile" DependsOnTargets="_OdinCheckOutputType;OdinResolveReferences;OdinBuildLinkReferences" Inputs="@(OdinCompile);@(OdinReferencedSource);@(OdinLinkInput);$(MSBuildProjectFullPath)" Outputs="$(TargetPath);@(_OdinPdbOutput);@(_OdinImportLibOutput)">
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))" />
     <OdinBuild OdinExe="$(OdinExe)"
                PackageDirectory="$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(OdinPackageDir)'))"
@@ -181,17 +189,29 @@
   </Target>
 
   <!-- A DLL linked through its import library must sit next to the exe at run time (what a C++ project reference does as "copy local"). This runs on every build, outside the up-to-date check of _OdinCompile, so a deleted or stale copy is restored; the DLL's PDB comes along when it exists. -->
-  <Target Name="_OdinCopyRuntimeDlls" DependsOnTargets="OdinResolveReferences">
+  <Target Name="_OdinCopyRuntimeDlls" DependsOnTargets="OdinResolveReferences;OdinBuildLinkReferences">
     <ItemGroup>
       <_OdinRuntimeDll Include="@(OdinLinkInput->WithMetadataValue('Extension', '.lib')->'%(RootDir)%(Directory)%(Filename).dll')" />
       <_OdinRuntimeDll Include="@(_OdinRuntimeDll->'%(RootDir)%(Directory)%(Filename).pdb')" />
       <_OdinRuntimeDll Remove="@(_OdinRuntimeDll)" Condition="!Exists('%(_OdinRuntimeDll.FullPath)')" />
     </ItemGroup>
     <Copy SourceFiles="@(_OdinRuntimeDll)" DestinationFolder="$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))" SkipUnchangedFiles="true" Condition="'@(_OdinRuntimeDll)' != ''" />
+    <!-- Clean does not resolve references (that would build them), so it reads this list of what was copied. -->
+    <PropertyGroup>
+      <_OdinOutputDirectory>$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))</_OdinOutputDirectory>
+    </PropertyGroup>
+    <ItemGroup>
+      <_OdinCopiedDll Include="@(_OdinRuntimeDll->'$(_OdinOutputDirectory)\%(Filename)%(Extension)')" />
+    </ItemGroup>
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_OdinCopiedListPath)'))" />
+    <WriteLinesToFile File="$(_OdinCopiedListPath)" Lines="@(_OdinCopiedDll)" Overwrite="true" />
   </Target>
 
   <Target Name="Clean">
-    <Delete Files="$(TargetPath);$(_OdinPdbPath);@(_OdinImportLibOutput)" />
+    <ReadLinesFromFile File="$(_OdinCopiedListPath)" Condition="Exists('$(_OdinCopiedListPath)')">
+      <Output TaskParameter="Lines" ItemName="_OdinCopiedToDelete" />
+    </ReadLinesFromFile>
+    <Delete Files="$(TargetPath);$(_OdinPdbPath);@(_OdinImportLibOutput);@(_OdinCopiedToDelete);$(_OdinCopiedListPath)" />
   </Target>
 
   <Target Name="Rebuild" DependsOnTargets="Clean;Build" />

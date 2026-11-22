@@ -124,7 +124,7 @@ public sealed class OlsCollectionTests
         TimeSpan firstHover = timer.Elapsed;
         Console.WriteLine($"100 collections: start+initialize {initialize.TotalMilliseconds:F0} ms, first hover {firstHover.TotalMilliseconds:F0} ms");
         StringAssert.Contains(hover, "pkg.value50");
-        Assert.IsLessThan(10000, initialize.TotalMilliseconds, "initialize with 100 collections should stay well under 10 s");
+        Assert.IsLessThan(TimeSpan.FromSeconds(10), initialize, "initialize with 100 collections should stay well under 10 s");
     }
 
     [TestMethod]

@@ -37,6 +37,12 @@ public sealed class TemplateVersionTests
         Assert.IsNotEmpty(projects);
         foreach (string project in projects)
         {
+            // Generated stress solutions (scripts\new-stress-solution.ps1, git-ignored) pin whatever version they were made with.
+            if (project.Contains($"{Path.DirectorySeparatorChar}stress-"))
+            {
+                continue;
+            }
+
             if (project.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
             {
                 continue;
