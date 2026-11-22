@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 
 namespace OdinVS.Core.Tests;
@@ -91,6 +92,39 @@ public sealed class OlsCollectionTests
         Layout layout = Create();
         using OlsClient client = Start(Options(layout.ProjectA, layout.CollectionA));
         StringAssert.Contains(HoverText(client, layout.FileA), "pkg.value");
+    }
+
+    // M7 scale check: the language client gives ols one collection per project in the solution, so a 100-project solution means 100
+    // collections at initialize (and a restart when the set changes). Timings are written to the test output.
+    [TestMethod]
+    public void OneHundredCollectionsInitializeAndResolveAnImportQuickly()
+    {
+        const int Count = 100;
+        string root = Directory.CreateTempSubdirectory("odinvs-col100").FullName;
+        JsonArray collections = [];
+        for (int i = 1; i <= Count; i++)
+        {
+            string collection = Path.Combine(root, $"col{i:D3}");
+            Directory.CreateDirectory(Path.Combine(collection, "pkg"));
+            File.WriteAllText(Path.Combine(collection, "pkg", "pkg.odin"), $"package pkg\n\nvalue{i} :: proc() -> int {{\n\treturn {i}\n}}\n");
+            collections.Add(new JsonObject { ["name"] = $"c{i:D3}", ["path"] = collection });
+        }
+
+        string project = Path.Combine(root, "app", "src");
+        Directory.CreateDirectory(project);
+        string file = Path.Combine(project, "main.odin");
+        File.WriteAllText(file, "package main\n\nimport \"c050:pkg\"\n\nmain :: proc() {\n\tx := pkg.value50()\n\t_ = x\n}\n");
+        JsonObject options = new() { ["odin_command"] = OdinPath, ["checker_path"] = new JsonArray(project), ["collections"] = collections };
+
+        Stopwatch timer = Stopwatch.StartNew();
+        using OlsClient client = Start(options);
+        TimeSpan initialize = timer.Elapsed;
+        timer.Restart();
+        string hover = HoverText(client, file);
+        TimeSpan firstHover = timer.Elapsed;
+        Console.WriteLine($"100 collections: start+initialize {initialize.TotalMilliseconds:F0} ms, first hover {firstHover.TotalMilliseconds:F0} ms");
+        StringAssert.Contains(hover, "pkg.value50");
+        Assert.IsLessThan(TimeSpan.FromSeconds(10), initialize, "initialize with 100 collections should stay well under 10 s");
     }
 
     [TestMethod]

@@ -22,6 +22,10 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
     private readonly Log m_Log = Log.Default;
     private IDisposable? m_Link;
     private string m_LastLogged = string.Empty;
+    // Guards the registry work of OnUpdate (dataflow thread) against Release (unload thread): a late update must not re-register a released project.
+    private readonly object m_Gate = new();
+    private string? m_RegisteredPath;
+    private bool m_Released;
 
     [ImportingConstructor]
     public OdinCollectionSubscriber(UnconfiguredProject project, IActiveConfiguredProjectSubscriptionService subscription)
@@ -38,6 +42,11 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
         // A second LoadAsync (defensive) must not leave the first link or handler behind.
         m_Project.ProjectUnloading -= OnProjectUnloadingAsync;
         m_Link?.Dispose();
+        lock (m_Gate)
+        {
+            m_Released = false;
+        }
+
         m_Project.ProjectUnloading += OnProjectUnloadingAsync;
         ActionBlock<IProjectVersionedValue<IProjectSubscriptionUpdate>> block = new(OnUpdate);
         // Without the rule name CPS leaves the rule out of the snapshots (only rules somebody asked for are computed).
@@ -62,8 +71,17 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
         m_Project.ProjectUnloading -= OnProjectUnloadingAsync;
         m_Link?.Dispose();
         m_Link = null;
-        OdinCollectionRegistry.Instance.Remove(m_Project.FullPath);
-        m_Log.Write($"collection of {m_Project.FullPath} released");
+        string path;
+        lock (m_Gate)
+        {
+            m_Released = true;
+            // The path the entry was registered under, not FullPath now: a renamed project reports its new path here.
+            path = m_RegisteredPath ?? m_Project.FullPath;
+            OdinCollectionRegistry.Instance.Remove(path);
+            m_RegisteredPath = null;
+        }
+
+        m_Log.Write($"collection of {path} released");
     }
 
     // Runs on a dataflow thread; must not throw (an exception would fault the block and end the subscription).
@@ -87,7 +105,25 @@ public sealed class OdinCollectionSubscriber : IProjectDynamicLoadComponent
                 m_LastLogged = value;
                 m_Log.Write($"collection of {m_Project.FullPath}: {value}");
             }
-            OdinCollectionRegistry.Instance.Set(m_Project.FullPath, name, root);
+
+            string path = m_Project.FullPath;
+            lock (m_Gate)
+            {
+                if (m_Released)
+                {
+                    return;
+                }
+
+                if (m_RegisteredPath is not null && !string.Equals(m_RegisteredPath, path, StringComparison.OrdinalIgnoreCase))
+                {
+                    // The project was renamed or moved: drop the entry under the old path, or it would stay until the solution is reopened.
+                    m_Log.Write($"collection of {m_RegisteredPath} moved to {path} (project renamed or moved)");
+                    OdinCollectionRegistry.Instance.Remove(m_RegisteredPath);
+                }
+
+                m_RegisteredPath = path;
+                OdinCollectionRegistry.Instance.Set(path, name, root);
+            }
         }
         catch (Exception ex)
         {

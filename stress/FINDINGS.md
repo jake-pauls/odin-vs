@@ -33,7 +33,7 @@ Generated solutions default to `tests\samples\stress-<shape>-<count>\` (git-igno
 Evaluating one project (`-getItem:OdinCompile`) takes 0.4 s. Every run produced all N executables (the script fails otherwise). Not a benchmark: one machine, one run each, no warm-up control beyond the first "SDK restore" step.
 
 ## Visual Studio (user, 2026-11-14, reported as pasted Output text)
-`stress-chain\Stress.sln`, Build Solution, Debug x64: `Build: 100 succeeded or up-to-date, 0 failed, 0 skipped`, **36.2 s** (Output window, `Build completed ... took 36.196 seconds`). VS ordered the projects through the `ProjectReference` chain (Stress100 first, Stress001 last) and each project's odin command line carried the full transitive collection set (`Stress099` had 1, `Stress001` had 99). This matches the command-line Chain figure (34.0 s). Not reported: solution load time, memory, Solution Explorer behaviour and ols with 100 collections.
+`stress-chain\Stress.sln`, Build Solution, Debug x64: `Build: 100 succeeded or up-to-date, 0 failed, 0 skipped`, **36.2 s** (Output window, `Build completed ... took 36.196 seconds`). VS ordered the projects through the `ProjectReference` chain (Stress100 first, Stress001 last) and each project's odin command line carried the full transitive collection set (`Stress099` had 1, `Stress001` had 99). This matches the command-line Chain figure (34.0 s). Not reported: solution load time, memory and Solution Explorer behaviour (ols with 100 collections: see "Not done").
 
 ## What the stress test showed
 - **Reference resolution is not the cost at this size.** No-op builds of 100 or 300 projects take about a second, so the up-to-date checks and the graph walk scale. The time is odin compiling the packages below each project.
@@ -49,5 +49,5 @@ Evaluating one project (`-getItem:OdinCompile`) takes 0.4 s. Every run produced 
 
 ## Not done
 - Solution load time and memory in Visual Studio (needs the user in Exp; open a generated `Stress.sln` and note the Output window and Task Manager figures here).
-- ols with 100 collections (the language client passes the union of all collections to one ols; the resulting `initializationOptions` size and ols start time were not measured).
+- ~~ols with 100 collections~~ **Measured 2026-11-14 (tier-2 `OlsCollectionTests.OneHundredCollectionsInitializeAndResolveAnImportQuickly`, pinned ols dev-2026-10, real odin):** starting ols with 100 collections in `initializationOptions` and completing `initialize` took about 259 ms (single run), the first hover (an import through the 50th collection) 3 ms after `didOpen`, and the import resolved. `AHundredProjectsLoadingInOneBurstRaiseOneChange` (tier 1) shows 100 projects reporting in one burst raise one `CollectionsChanged` (the event that restarts ols; the restart itself is not tested). Not measured: the real CPS reporting cadence in Visual Studio, so how many restarts a load causes (500 ms quiet, 3 s cap). Not measured: ols checking time on a real 100-project solution (diagnostics only run on save) and the restart cost inside Visual Studio.
 - A solution with mixed Odin, C++ and C# projects at this size.

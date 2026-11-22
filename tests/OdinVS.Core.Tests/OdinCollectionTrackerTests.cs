@@ -53,6 +53,21 @@ public sealed class OdinCollectionTrackerTests
     }
 
     [TestMethod]
+    public void AHundredProjectsLoadingInOneBurstRaiseOneChange()
+    {
+        OdinCollectionTracker tracker = NewTracker(out _);
+        int count = CountEvents(tracker, () =>
+        {
+            for (int i = 0; i < 100; i++)
+            {
+                tracker.Set(@"C:\s\P" + i + ".odinproj", "P" + i, @"C:\s\P" + i);
+            }
+        }, expected: 1);
+        Assert.AreEqual(1, count, "ols must restart once for a whole solution, not once per project");
+        Assert.HasCount(100, tracker.Current().Collections);
+    }
+
+    [TestMethod]
     public void ASetThatMatchesWhatWasHandedOutRaisesNothing()
     {
         OdinCollectionTracker tracker = NewTracker(out _);
