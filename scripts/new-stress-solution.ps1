@@ -5,11 +5,13 @@
 .DESCRIPTION
   Writes <OutputDirectory>\StressNNN\StressNNN.odinproj (+ src\main.odin and one package) for NNN = 1..Count, a Stress.sln that holds
   them all, and a nuget.config that points at the local Odin.Sdk feed (run scripts\pack-sdk.ps1 first).
+  The SDK version defaults to the <Version> in srcOdinVS.BuildOdin.Sdk.csproj; -SdkVersion overrides it.
   Shapes (Stress001 is the root application in each):
     Tree  project i references 2i and 2i+1 (a balanced tree, about log2(Count) levels deep; the realistic case)
     Chain project i references i+1 (depth Count: the worst case for transitive collections and recompilation)
     Flat  project 1 references every other project (one project with Count-1 direct references)
   Every reference is a Source reference, so a project compiles all packages below it.
+  The SDK version defaults to the <Version> in src\OdinVS.Build\Odin.Sdk.csproj (what pack-sdk.ps1 packs); -SdkVersion overrides it.
   The default output folder is tests\samples\stress-<shape>-<count>, git-ignored (stress-*). A relative -OutputDirectory is taken from the current directory. Nothing here is part of the product.
 
 .PARAMETER Measure
@@ -20,13 +22,19 @@ param(
     [int]$Count = 100,
     [ValidateSet('Tree', 'Chain', 'Flat')][string]$Shape = 'Tree',
     [string]$OutputDirectory = '',
-    [string]$SdkVersion = '0.5.1-local',
+    [string]$SdkVersion = '',
     [switch]$Measure
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $utf8 = New-Object System.Text.UTF8Encoding($false)
+if ($SdkVersion.Length -eq 0) {
+    # The version scripts\pack-sdk.ps1 packs, so a version bump never touches this script.
+    $versionNode = Select-Xml -Path (Join-Path $repo 'src\OdinVS.Build\Odin.Sdk.csproj') -XPath '//Version'
+    if ($null -eq $versionNode) { throw 'No <Version> in src\OdinVS.Build\Odin.Sdk.csproj; pass -SdkVersion.' }
+    $SdkVersion = $versionNode.Node.InnerText.Trim()
+}
 if ($OutputDirectory.Length -eq 0) {
     # Next to the other samples; git-ignored there as stress-*.
     $OutputDirectory = Join-Path $repo "tests\samples\stress-$($Shape.ToLowerInvariant())-$Count"
