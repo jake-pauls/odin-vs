@@ -31,4 +31,4 @@ msbuild MyProject.odinproj /restore /t:Build
 msbuild MyProject.odinproj /restore /t:Rebuild /p:Configuration=Release
 ```
 
-Next: [References](references.md), [Debugging](debugging.md), or back to the [user guide](../user-guide.md).
+Next: [References](references.md), [Debugging](debugging.md), or back to the [user guide](README.md).

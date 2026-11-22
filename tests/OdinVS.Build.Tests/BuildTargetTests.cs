@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace OdinVS.Build.Tests;
 
-// These run real odin (and its MSVC link step), so they need the toolchain from docs/toolchain.md. `dotnet msbuild` is used here;
+// These run real odin (and its MSVC link step), so they need the toolchain from docs/dev/toolchain.md. `dotnet msbuild` is used here;
 // the same targets were also run with VS's MSBuild.exe by hand (see docs/internal/milestones.md).
 [TestClass]
 [TestCategory("RequiresToolchain")]

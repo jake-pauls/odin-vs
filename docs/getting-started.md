@@ -58,11 +58,11 @@ NuGet finds the package through a `nuget.config`. Create one **before** step 5, 
 ## 5. Create and build a project
 
 1. In Visual Studio: *File > New > Project > **Odin Executable*** (or *Odin Dynamic Library (DLL)*), and create it inside the folder from step 4.
-2. The first restore (when the project loads) pulls the package into `~\.nuget\packages`. The template writes the package version your build of the extension packs, so it matches step 3; if a project reports an SDK-resolution error, see [troubleshooting.md](troubleshooting.md).
+2. The first restore (when the project loads) pulls the package into `~\.nuget\packages`. The template writes the package version your build of the extension packs, so it matches step 3; if a project reports an SDK-resolution error, see [troubleshooting.md](user-guide/troubleshooting.md).
 3. *Build > Build Solution*. Errors and warnings appear in the Error List.
 4. Press **F5** (or Ctrl+F5). A Debug build carries debug symbols, so breakpoints in `.odin` files bind.
 
-If the project fails to load with an SDK-resolution error, steps 3 and 4 are not complete: see [troubleshooting.md](troubleshooting.md).
+If the project fails to load with an SDK-resolution error, steps 3 and 4 are not complete: see [troubleshooting.md](user-guide/troubleshooting.md).
 
 ## 6. Build from the command line
 

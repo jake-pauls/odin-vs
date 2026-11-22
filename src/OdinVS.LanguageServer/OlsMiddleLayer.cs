@@ -6,7 +6,7 @@ using Task = System.Threading.Tasks.Task;
 namespace OdinVS.LanguageServer;
 
 // Reshapes ols diagnostics on their way into VS: code becomes ols.<code>. Anything that goes wrong here must still
-// forward the diagnostics as received, or VS shows none (see docs/pitfalls.md).
+// forward the diagnostics as received, or VS shows none (see docs/dev/pitfalls.md).
 internal sealed class OlsMiddleLayer(Log log) : ILanguageClientMiddleLayer2<JToken>
 {
     private const string PublishDiagnostics = "textDocument/publishDiagnostics";

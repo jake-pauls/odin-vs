@@ -8,7 +8,7 @@ description: Review the current task branch with a read-only review agent, fix t
 Follow these steps in order. The git rules in `CLAUDE.md` ("Git workflow") still apply: commits on the task branch are pre-approved, pushes only to `git@github.com:jake-pauls/`, never merge into `main`.
 
 ## 1. Review with an agent
-Spawn one `general-purpose` agent. It is read-only: it must not edit, commit, build, install, or launch Visual Studio. Give it the branch name, the base (`main`), the instruction to read `CLAUDE.md`, `docs/pitfalls.md` and the relevant `docs/internal/milestones.md` section first, and the scope (what changed, `git diff main...<branch>`). Ask for a concise report in two groups:
+Spawn one `general-purpose` agent. It is read-only: it must not edit, commit, build, install, or launch Visual Studio. Give it the branch name, the base (`main`), the instruction to read `CLAUDE.md`, `docs/dev/pitfalls.md` and the relevant `docs/internal/milestones.md` section first, and the scope (what changed, `git diff main...<branch>`). Ask for a concise report in two groups:
 - (A) trivial and safe to fix without discussion, each with file:line and the exact fix;
 - (B) non-trivial or needing a decision, each with the question that needs answering,
 ranked by severity, with "unsure" stated where it is unsure and no padding. Ask it to look for correctness bugs (lifetime, races, exceptions that could hide output or crash VS), `CLAUDE.md` convention violations, dead code, weak or missing tests, doc claims not backed by evidence, and script robustness.

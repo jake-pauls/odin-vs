@@ -17,4 +17,4 @@ To make a custom configuration appear in VS, declare literal items in the `.odin
 </ItemGroup>
 ```
 
-The values must be plain text: VS reads them without evaluating `$(...)` (see [pitfalls.md](../pitfalls.md)). A solution configuration of the same name still has to be created in the Configuration Manager (or the `.sln`), and each project mapped to it; a project that does not declare that name is skipped when that solution configuration builds.
+The values must be plain text: VS reads them without evaluating `$(...)` (see [pitfalls.md](../dev/pitfalls.md)). A solution configuration of the same name still has to be created in the Configuration Manager (or the `.sln`), and each project mapped to it; a project that does not declare that name is skipped when that solution configuration builds.

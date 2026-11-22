@@ -1,6 +1,6 @@
 # Developer guide
 
-How to build, test and run a development version of the extension after cloning. For using the extension see [getting-started.md](getting-started.md) and [user-guide.md](user-guide.md); for conventions and decisions see `CLAUDE.md`; known traps are in [pitfalls.md](pitfalls.md); milestone history is in [internal/milestones.md](internal/milestones.md). Commands run from the repository root in PowerShell unless noted.
+How to build, test and run a development version of the extension after cloning. For using the extension see [getting-started.md](../getting-started.md) and [user-guide.md](../user-guide/README.md); for conventions and decisions see `CLAUDE.md`; known traps are in [pitfalls.md](pitfalls.md); milestone history is in [internal/milestones.md](../internal/milestones.md). Commands run from the repository root in PowerShell unless noted.
 
 ## Prerequisites
 - Windows with **Visual Studio 2026** (version 18.x) and the *Visual Studio extension development* workload (VSSDK, the .NET Framework 4.7.2 targeting pack, MSBuild). The scripts default to the Community edition at `C:\Program Files\Microsoft Visual Studio\18\Community`; pass `-VsRoot` to `scripts\exp-reinstall.ps1` for another install.
@@ -67,4 +67,4 @@ Requires step 2 (the samples restore `Odin.Sdk` through `tests/samples/nuget.con
 | `spikes/` | Throwaway feasibility code, kept for reference |
 
 ## Before you commit
-Test anything VS-visible in Exp first (Git workflow rule 12), keep the tests green, and update the table in [reference/diagnostics.md](reference/diagnostics.md) (and [reference/project-properties.md](reference/project-properties.md) for a project property) if you add a diagnostic. Never commit `nuget/*.nupkg`, and never push it to a package feed.
+Test anything VS-visible in Exp first (Git workflow rule 12), keep the tests green, and update the table in [reference/diagnostics.md](../reference/diagnostics.md) (and [reference/project-properties.md](../reference/project-properties.md) for a project property) if you add a diagnostic. Never commit `nuget/*.nupkg`, and never push it to a package feed.

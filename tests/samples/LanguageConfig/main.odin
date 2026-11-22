@@ -12,7 +12,7 @@ import "core:fmt"
 //   W4  line 24: type "ab" after "my_" -> Ctrl+Space expect the span to cover all of "my_ab", not just "ab"
 //   W5  line 25: type "a" after "-" in "n := -"      expect the "-" is kept
 //
-// Auto-close / surround (works since M5 through OdinBraceCompletionEnabler, see docs/pitfalls.md; a regression shows up here):
+// Auto-close / surround (works since M5 through OdinBraceCompletionEnabler, see docs/dev/pitfalls.md; a regression shows up here):
 //   A1  line 29: type "(" "{" "[" in turn            note whether a closing character appears
 //   A2  line 30: type '"' and "'"                    note whether a closing quote appears
 //   A3  line 31: select "word" and type "("          note whether it wraps (surround-with)

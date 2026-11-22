@@ -30,10 +30,10 @@ The exact commands and the `nuget.config` contents are in [Getting started](docs
 | For | Read |
 |---|---|
 | Install and first project | [docs/getting-started.md](docs/getting-started.md) |
-| Using the extension | [docs/user-guide.md](docs/user-guide.md) |
+| Using the extension | [docs/user-guide/](docs/user-guide/README.md) |
 | Project properties, configurations, diagnostic codes | [docs/reference/](docs/reference/project-properties.md) |
-| Something is broken | [docs/troubleshooting.md](docs/troubleshooting.md) |
-| Building and testing the extension from a clone | [docs/dev-docs.md](docs/dev-docs.md) |
+| Something is broken | [docs/user-guide/troubleshooting.md](docs/user-guide/troubleshooting.md) |
+| Building and testing the extension from a clone | [docs/dev/dev-docs.md](docs/dev/dev-docs.md) |
 | Everything else (index) | [docs/README.md](docs/README.md) |
 
 Sample projects to try are under [tests/samples](tests/samples).
