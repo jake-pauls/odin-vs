@@ -55,6 +55,8 @@ public sealed class LinkTargetTests
         Assert.AreEqual(0, Build(work, "LinkApp").ExitCode);
         string copied = Path.Combine(work, "LinkApp", "bin", "Debug", "LinkDll.dll");
         Assert.IsTrue(File.Exists(copied));
+        Assert.IsEmpty(Directory.GetFiles(Path.Combine(work, "LinkApp", "bin", "Debug"), "*.txt"), "no bookkeeping file may sit in the output folder");
+        Assert.IsTrue(File.Exists(Path.Combine(work, "LinkApp", "obj", "Debug", "LinkApp.FileListAbsolute.txt")), "the list lives in obj");
 
         MsBuildResult clean = Build(work, "LinkApp", "Clean");
         Assert.AreEqual(0, clean.ExitCode, clean.Output);
