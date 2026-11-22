@@ -52,6 +52,9 @@
     <TargetPath>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(TargetPath)'))</TargetPath>
     <!-- odin writes the PDB next to -out: with the same name, so it follows TargetPath and is not a separate setting. -->
     <_OdinPdbPath>$([System.IO.Path]::ChangeExtension('$(TargetPath)', '.pdb'))</_OdinPdbPath>
+    <!-- The FileWrites idea of C# and C++ projects, kept in obj\ (never in the output folder, so nothing extra ships with the app): lists the
+         DLLs/PDBs copied next to the exe from Link references, so Clean can remove them. -->
+    <_OdinCopiedListPath>$(MSBuildProjectDirectory)\obj\$(Configuration)\$(MSBuildProjectName).FileListAbsolute.txt</_OdinCopiedListPath>
     <!-- Default: -debug (emits the PDB, implies -o:none) only for the Debug configuration. Set OdinDebug in the .odinproj to change it. -->
     <OdinDebug Condition="'$(OdinDebug)' == '' and '$(Configuration)' == 'Debug'">true</OdinDebug>
     <OdinDebug Condition="'$(OdinDebug)' == ''">false</OdinDebug>
@@ -193,10 +196,22 @@
       <_OdinRuntimeDll Remove="@(_OdinRuntimeDll)" Condition="!Exists('%(_OdinRuntimeDll.FullPath)')" />
     </ItemGroup>
     <Copy SourceFiles="@(_OdinRuntimeDll)" DestinationFolder="$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))" SkipUnchangedFiles="true" Condition="'@(_OdinRuntimeDll)' != ''" />
+    <!-- Clean does not resolve references (that would build them), so it reads this list of what was copied. -->
+    <PropertyGroup>
+      <_OdinOutputDirectory>$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))</_OdinOutputDirectory>
+    </PropertyGroup>
+    <ItemGroup>
+      <_OdinCopiedDll Include="@(_OdinRuntimeDll->'$(_OdinOutputDirectory)\%(Filename)%(Extension)')" />
+    </ItemGroup>
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_OdinCopiedListPath)'))" />
+    <WriteLinesToFile File="$(_OdinCopiedListPath)" Lines="@(_OdinCopiedDll)" Overwrite="true" />
   </Target>
 
   <Target Name="Clean">
-    <Delete Files="$(TargetPath);$(_OdinPdbPath);@(_OdinImportLibOutput)" />
+    <ReadLinesFromFile File="$(_OdinCopiedListPath)" Condition="Exists('$(_OdinCopiedListPath)')">
+      <Output TaskParameter="Lines" ItemName="_OdinCopiedToDelete" />
+    </ReadLinesFromFile>
+    <Delete Files="$(TargetPath);$(_OdinPdbPath);@(_OdinImportLibOutput);@(_OdinCopiedToDelete);$(_OdinCopiedListPath)" />
   </Target>
 
   <Target Name="Rebuild" DependsOnTargets="Clean;Build" />

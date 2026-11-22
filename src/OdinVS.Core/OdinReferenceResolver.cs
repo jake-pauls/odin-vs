@@ -36,13 +36,6 @@ public sealed record OdinResolvedReferences(
 // MSBuild and Visual Studio fail identically; MSBuild itself only orders the builds.
 public static class OdinReferenceResolver
 {
-    public const string CycleCode = "ODIN0102";
-    public const string DuplicateCollectionCode = "ODIN0103";
-    public const string UnresolvedReferenceCode = "ODIN0104";
-    public const string NoLibraryCode = "ODIN0105";
-    public const string DuplicateLibraryCode = "ODIN0108";
-    public const string HostCannotWalkCode = "ODIN0109";
-
     public static OdinResolvedReferences Resolve(string rootProjectPath, IEnumerable<OdinProjectNode> nodes)
     {
         Dictionary<string, OdinProjectNode> byPath = new(StringComparer.OrdinalIgnoreCase);
@@ -54,7 +47,7 @@ public static class OdinReferenceResolver
         List<OdinReferenceProblem> problems = [];
         if (!byPath.ContainsKey(rootProjectPath))
         {
-            problems.Add(new OdinReferenceProblem(UnresolvedReferenceCode, $"project '{rootProjectPath}' is missing from the reference graph."));
+            problems.Add(new OdinReferenceProblem(OdinDiagnosticCodes.UnresolvedReference, $"project '{rootProjectPath}' is missing from the reference graph."));
             return new OdinResolvedReferences([], [], [], problems);
         }
 
@@ -92,7 +85,7 @@ public static class OdinReferenceResolver
         {
             if (!byPath.TryGetValue(edge.ProjectPath, out OdinProjectNode? target))
             {
-                problems.Add(new OdinReferenceProblem(UnresolvedReferenceCode, $"'{byPath[path].Name}' references '{edge.ProjectPath}', which could not be read. Check that the project exists and loads."));
+                problems.Add(new OdinReferenceProblem(OdinDiagnosticCodes.UnresolvedReference, $"'{byPath[path].Name}' references '{edge.ProjectPath}', which could not be read. Check that the project exists and loads."));
                 continue;
             }
 
@@ -104,7 +97,7 @@ public static class OdinReferenceResolver
                 string cycle = string.Join(" -> ", names);
                 if (reportedCycles.Add(cycle))
                 {
-                    problems.Add(new OdinReferenceProblem(CycleCode, $"circular project reference: {cycle}. Remove one of these references."));
+                    problems.Add(new OdinReferenceProblem(OdinDiagnosticCodes.CircularReference, $"circular project reference: {cycle}. Remove one of these references."));
                 }
             }
             else if (targetState == 0)
@@ -135,7 +128,7 @@ public static class OdinReferenceResolver
             {
                 if (target.LinkLibrary.Length == 0)
                 {
-                    problems.Add(new OdinReferenceProblem(NoLibraryCode, $"'{node.Name}' links '{target.Name}', but '{target.Name}' produces no library to link. Reference it as a source reference, or make it a library project."));
+                    problems.Add(new OdinReferenceProblem(OdinDiagnosticCodes.NoLibraryToLink, $"'{node.Name}' links '{target.Name}', but '{target.Name}' produces no library to link. Reference it as a source reference, or make it a library project."));
                 }
                 else if (!linkInputs.Contains(target.LinkLibrary, StringComparer.OrdinalIgnoreCase))
                 {
@@ -143,7 +136,7 @@ public static class OdinReferenceResolver
                     string? sameName = linkInputs.FirstOrDefault(existing => string.Equals(Path.GetFileName(existing), Path.GetFileName(target.LinkLibrary), StringComparison.OrdinalIgnoreCase));
                     if (sameName is not null)
                     {
-                        problems.Add(new OdinReferenceProblem(DuplicateLibraryCode, $"two linked libraries are both named '{Path.GetFileName(target.LinkLibrary)}' ('{sameName}' and '{target.LinkLibrary}'). The linker would use only one of them. Give one project a different TargetName."));
+                        problems.Add(new OdinReferenceProblem(OdinDiagnosticCodes.DuplicateLibraryName, $"two linked libraries are both named '{Path.GetFileName(target.LinkLibrary)}' ('{sameName}' and '{target.LinkLibrary}'). The linker would use only one of them. Give one project a different TargetName."));
                     }
 
                     linkInputs.Add(target.LinkLibrary);
@@ -156,7 +149,7 @@ public static class OdinReferenceResolver
             {
                 if (!string.Equals(owner, target.CollectionRoot, StringComparison.OrdinalIgnoreCase))
                 {
-                    problems.Add(new OdinReferenceProblem(DuplicateCollectionCode, $"collection name '{target.CollectionName}' is used by two projects ('{owner}' and '{target.CollectionRoot}'). Give each project a different OdinCollectionName (the default is the project name), or remove the OdinCollectionName that makes them match."));
+                    problems.Add(new OdinReferenceProblem(OdinDiagnosticCodes.DuplicateCollectionName, $"collection name '{target.CollectionName}' is used by two projects ('{owner}' and '{target.CollectionRoot}'). Give each project a different OdinCollectionName (the default is the project name), or remove the OdinCollectionName that makes them match."));
                 }
             }
             else

@@ -22,7 +22,7 @@ public sealed class OdinSolutionCollectionsTests
     {
         OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([Project("B", "dup", @"C:\s\B"), Project("A", "dup", @"C:\s\A")]);
         Assert.AreEqual(@"C:\s\A", result.Collections.Single().Value);
-        Assert.AreEqual(OdinSolutionCollections.DuplicateCode, result.Problems.Single().Code);
+        Assert.AreEqual(OdinDiagnosticCodes.DuplicateCollectionName, result.Problems.Single().Code);
         StringAssert.Contains(result.Problems.Single().Message, "dup");
         StringAssert.Contains(result.Problems.Single().Message, "Give each project a different OdinCollectionName");
     }

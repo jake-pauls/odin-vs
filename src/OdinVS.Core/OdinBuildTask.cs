@@ -8,12 +8,6 @@ namespace OdinVS.Core;
 // Public because MSBuild instantiates tasks by reflection. Argument building and error parsing live in internal classes with unit tests.
 public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
 {
-    public const string ErrorCode = "ODIN0001";
-    public const string WarningCode = "ODIN0002";
-    public const string FailedWithoutDiagnosticsCode = "ODIN0100";
-    public const string OdinNotFoundCode = "ODIN0101";
-    public const string LinkPathCode = "ODIN0107";
-
     private readonly object m_Lock = new();
     private Process? m_Process;
     private bool m_Cancelled;
@@ -56,7 +50,7 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
             string linkerPath = OdinBuildArguments.ToLinkerPath(linkInput.ItemSpec, WorkingDirectory);
             if (OdinBuildArguments.HasWhitespace(linkerPath))
             {
-                Log.LogError(null, LinkPathCode, null, linkInput.ItemSpec, 0, 0, 0, 0, "odin splits -extra-linker-flags on spaces, so the library '{0}' cannot be linked from a path with spaces. Move the referenced project's output (or this project) to a folder without spaces, or set OutDir on the referenced project.", linkInput.ItemSpec);
+                Log.LogError(null, OdinDiagnosticCodes.LinkPathHasSpaces, null, linkInput.ItemSpec, 0, 0, 0, 0, "odin splits -extra-linker-flags on spaces, so the library '{0}' cannot be linked from a path with spaces. Move the referenced project's output (or this project) to a folder without spaces, or set OutDir on the referenced project.", linkInput.ItemSpec);
                 return false;
             }
         }
@@ -82,7 +76,7 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            Log.LogError(null, FailedWithoutDiagnosticsCode, null, PackageDirectory, 0, 0, 0, 0, "could not start '{0}': {1}. Check that odin.exe is a runnable executable.", odin, ex.Message);
+            Log.LogError(null, OdinDiagnosticCodes.BuildFailedWithoutDiagnostics, null, PackageDirectory, 0, 0, 0, 0, "could not start '{0}': {1}. Check that odin.exe is a runnable executable.", odin, ex.Message);
             return false;
         }
 
@@ -108,11 +102,11 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
         {
             if (diagnostic.IsWarning)
             {
-                Log.LogWarning(null, WarningCode, null, diagnostic.File, diagnostic.Line, diagnostic.Column, diagnostic.Line, diagnostic.EndColumn, "{0}", diagnostic.Message);
+                Log.LogWarning(null, OdinDiagnosticCodes.CompileWarning, null, diagnostic.File, diagnostic.Line, diagnostic.Column, diagnostic.Line, diagnostic.EndColumn, "{0}", diagnostic.Message);
             }
             else
             {
-                Log.LogError(null, ErrorCode, null, diagnostic.File, diagnostic.Line, diagnostic.Column, diagnostic.Line, diagnostic.EndColumn, "{0}", diagnostic.Message);
+                Log.LogError(null, OdinDiagnosticCodes.CompileError, null, diagnostic.File, diagnostic.Line, diagnostic.Column, diagnostic.Line, diagnostic.EndColumn, "{0}", diagnostic.Message);
             }
         }
 
@@ -126,7 +120,7 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
         {
             // Failures with no JSON errors (linker, crash): do not report success; show whatever odin printed.
             string detail = output.OtherText.Length > 0 ? output.OtherText : "no output";
-            Log.LogError(null, FailedWithoutDiagnosticsCode, null, PackageDirectory, 0, 0, 0, 0, "odin build failed with exit code {0} and no error list: {1}", exitCode, detail);
+            Log.LogError(null, OdinDiagnosticCodes.BuildFailedWithoutDiagnostics, null, PackageDirectory, 0, 0, 0, 0, "odin build failed with exit code {0} and no error list: {1}", exitCode, detail);
         }
 
         return !Log.HasLoggedErrors;
@@ -150,7 +144,7 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
 
         if (odin is null)
         {
-            Log.LogError(null, OdinNotFoundCode, null, string.Empty, 0, 0, 0, 0, "odin.exe not found at {0}. Install Odin there, add its folder to PATH, or set the OdinExe property in the .odinproj.", expectation);
+            Log.LogError(null, OdinDiagnosticCodes.OdinNotFound, null, string.Empty, 0, 0, 0, 0, "odin.exe not found at {0}. Install Odin there, add its folder to PATH, or set the OdinExe property in the .odinproj.", expectation);
         }
 
         return odin;
