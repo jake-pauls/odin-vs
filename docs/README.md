@@ -14,4 +14,5 @@
 
 ## History
 - [Milestones](internal/milestones.md): checklists with how each item was verified.
+- [Spikes](../spikes/README.md): the early feasibility experiments, kept as a record (not maintained).
 - [Original brief](internal/odin-vs-extension-brief.md) and [what changed after exploration](internal/odin-vs-extension-brief-after-exploration.md).
