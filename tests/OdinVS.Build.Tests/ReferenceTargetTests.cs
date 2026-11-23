@@ -34,6 +34,17 @@ public sealed class ReferenceTargetTests
     }
 
     [TestMethod]
+    public void ACollectionPathWithAQuoteIsReportedAndNeverReachesOdin()
+    {
+        string work = MsBuildSandbox.Instance.CopySamples("RefApp", "RefLib", "RefBase");
+        AppendToProject(work, "RefApp", "<ItemGroup><OdinCollection Include=\"Bad\"><Path>C:\\x\" -pre-build-command:calc.exe \"</Path></OdinCollection></ItemGroup>");
+        MsBuildResult result = Build(work, "RefApp");
+        Assert.AreNotEqual(0, result.ExitCode, result.Output);
+        StringAssert.Contains(result.Output, "ODIN0110");
+        Assert.IsFalse(result.Output.Split('\n').Any(line => line.Contains("ODIN: ") && line.Contains("-pre-build-command")), "odin must not be started with the injected value");
+    }
+
+    [TestMethod]
     public void LibrarySourceChangeRebuildsDependentsAndAnUnchangedGraphIsSkipped()
     {
         string work = MsBuildSandbox.Instance.CopySamples("RefApp", "RefLib", "RefBase");

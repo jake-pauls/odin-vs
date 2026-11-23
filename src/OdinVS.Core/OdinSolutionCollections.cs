@@ -21,6 +21,12 @@ public static class OdinSolutionCollections
         Dictionary<string, string> owners = new(StringComparer.Ordinal);
         foreach (OdinProjectCollection project in projects.OrderBy(p => p.ProjectFile, StringComparer.OrdinalIgnoreCase))
         {
+            if (!OdinBuildArguments.IsSafeArgumentValue(project.Name) || !OdinBuildArguments.IsSafeArgumentValue(project.Root))
+            {
+                problems.Add(new OdinReferenceProblem(OdinDiagnosticCodes.InvalidCollection, $"the collection of {project.ProjectFile} has an empty name or root, or one containing a double quote or control character, so it is not given to the language server. Fix OdinCollectionName or OdinCollectionRoot."));
+                continue;
+            }
+
             string root = project.Root.TrimEnd('\\', '/');
             if (owners.TryGetValue(project.Name, out string? owner))
             {

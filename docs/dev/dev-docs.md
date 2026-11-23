@@ -1,6 +1,6 @@
 # Developer guide
 
-How to build, test and run a development version of the extension after cloning. For using the extension see [user-guide.md](user-guide.md); for conventions and decisions see `CLAUDE.md`; known traps are in [pitfalls.md](pitfalls.md). Commands run from the repository root in PowerShell unless noted.
+How to build, test and run a development version of the extension after cloning. For using the extension see [getting-started.md](../getting-started.md) and [user-guide.md](../user-guide/README.md); for conventions and decisions see `CLAUDE.md`; known traps are in [pitfalls.md](pitfalls.md); milestone history is in [internal/milestones.md](../internal/milestones.md). Commands run from the repository root in PowerShell unless noted.
 
 ## Prerequisites
 - Windows with **Visual Studio 2026** (version 18.x) and the *Visual Studio extension development* workload (VSSDK, the .NET Framework 4.7.2 targeting pack, MSBuild). The scripts default to the Community edition at `C:\Program Files\Microsoft Visual Studio\18\Community`; pass `-VsRoot` to `scripts\exp-reinstall.ps1` for another install.
@@ -11,7 +11,7 @@ How to build, test and run a development version of the extension after cloning.
 
 ## 1. Clone and check the toolchain
 ```powershell
-git clone git@github.com:jake-pauls/odin-vs.git
+git clone https://github.com/jake-pauls/odin-vs.git
 cd odin-vs
 dotnet --version
 odin version    # or: & 'C:\Program Files\Odin\odin\dist\odin.exe' version, if odin is not on PATH
@@ -22,7 +22,7 @@ odin version    # or: & 'C:\Program Files\Odin\odin\dist\odin.exe' version, if o
 ```powershell
 scripts\pack-sdk.ps1
 ```
-This writes `nuget\Odin.Sdk.<version>-local.nupkg` (git-ignored, local only, never publish; see `nuget/README.md`). If you repack the same version, NuGet may keep serving its cached copy from `~\.nuget\packages\odin.sdk`; delete that folder yourself or bump `<Version>` in `src/OdinVS.Build/Odin.Sdk.csproj` (and the version in the samples).
+This writes `nuget\Odin.Sdk.<version>.nupkg` (the version already ends in `-local`; git-ignored, local only, never publish; see `nuget/README.md`). If you repack the same version, NuGet may keep serving its cached copy from `~\.nuget\packages\odin.sdk`; delete that folder yourself or bump `<Version>` in `src/OdinVS.Build/Odin.Sdk.csproj` (and the version in the samples).
 
 ## 3. Run the tests
 ```powershell
@@ -57,13 +57,14 @@ Requires step 2 (the samples restore `Odin.Sdk` through `tests/samples/nuget.con
 | Path | Purpose |
 |---|---|
 | `src/OdinVS` | The VSIX package (grammar, bundled ols, pkgdef with the `.odinproj` project-type registration, project and item templates) |
-| `src/OdinVS.ProjectSystem` | The OdinVS package: tool-warning info bar, shown when the OdinProject UI context activates (CPS itself is Visual Studio's) |
+| `src/OdinVS.ProjectSystem` | The OdinVS package: tool-warning info bar (shown when the OdinProject UI context activates), the F5/Ctrl+F5 launch provider, and the subscriber that feeds each project's collections to ols (CPS itself is Visual Studio's) |
+| `src/OdinVS.Debugger` | Concord debugger component: Odin slices, dynamic arrays, maps, unions, matrices, strings and Watch expressions (`a[i]`, `len`, `cap`, `m[key]`) |
 | `src/OdinVS.LanguageServer` | LSP client for ols |
-| `src/OdinVS.Core` | Logic with no VS references (error parser, argument builder, the `OdinBuild` task) |
+| `src/OdinVS.Core` | Logic with no VS references (error parser, argument builder, the `OdinBuild` task, reference resolver, collection tracker, diagnostic codes, map layout) |
 | `src/OdinVS.Build` | Source of the `Odin.Sdk` NuGet package |
 | `tests/` | `OdinVS.Core.Tests` (tiers 1-2), `OdinVS.Build.Tests` (tier 3), `samples/` |
-| `scripts/` | `exp-reinstall.ps1`, `pack-sdk.ps1`, `bump-ols.ps1` |
+| `scripts/` | `exp-reinstall.ps1`, `pack-sdk.ps1`, `bump-ols.ps1`, `new-stress-solution.ps1` |
 | `spikes/` | Throwaway feasibility code, kept for reference |
 
 ## Before you commit
-Test anything VS-visible in Exp first (Git workflow rule 12), keep the tests green, and update the diagnostics table in `user-guide.md` if you add a diagnostic. Never commit `nuget/*.nupkg`, and never push it to a package feed.
+Test anything VS-visible in Exp first (Git workflow rule 12), keep the tests green, and update the table in [reference/diagnostics.md](../reference/diagnostics.md) (and [reference/project-properties.md](../reference/project-properties.md) for a project property) if you add a diagnostic. Never commit `nuget/*.nupkg`, and never push it to a package feed.

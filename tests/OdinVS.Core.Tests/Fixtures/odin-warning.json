@@ -4,7 +4,7 @@
 		{
 			"type": "warning",
 			"pos": {
-				"file": "D:/Projects/Vibe/odin-vs/tests/samples/WarnOdin/src/main.odin",
+				"file": "C:/src/odin-vs/tests/samples/WarnOdin/src/main.odin",
 				"offset": 134,
 				"line": 11,
 				"column": 2,

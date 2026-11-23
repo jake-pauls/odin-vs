@@ -3,7 +3,7 @@ package main
 import "core:fmt"
 
 // Manual language-configuration checks (M5). Open this file in Exp, put the caret where each line says and type the text
-// after "type:". Record what happened in docs/milestones.md. Do not save edits to this file.
+// after "type:". Record what happened in docs/internal/milestones.md. Do not save edits to this file.
 //
 // wordPattern / completion span (ols completions; the replaced span comes from ols's textEdit):
 //   W1  line 21: type "pri" after "fmt." -> Tab      expect the top item (print or println), nothing left over before "fmt."
@@ -12,7 +12,7 @@ import "core:fmt"
 //   W4  line 24: type "ab" after "my_" -> Ctrl+Space expect the span to cover all of "my_ab", not just "ab"
 //   W5  line 25: type "a" after "-" in "n := -"      expect the "-" is kept
 //
-// Auto-close / surround (works since M5 through OdinBraceCompletionEnabler, see docs/pitfalls.md; a regression shows up here):
+// Auto-close / surround (works since M5 through OdinBraceCompletionEnabler, see docs/dev/pitfalls.md; a regression shows up here):
 //   A1  line 29: type "(" "{" "[" in turn            note whether a closing character appears
 //   A2  line 30: type '"' and "'"                    note whether a closing quote appears
 //   A3  line 31: select "word" and type "("          note whether it wraps (surround-with)

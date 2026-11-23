@@ -11,7 +11,7 @@ using OdinVS.Core;
 namespace OdinVS.LanguageServer;
 
 // Public because VS discovers it through MEF. The TextMate language-configuration auto-close does not run here (see
-// docs/pitfalls.md), so closing pairs come from VS's own brace-completion provider for the Odin content type.
+// docs/dev/pitfalls.md), so closing pairs come from VS's own brace-completion provider for the Odin content type.
 [Export(typeof(IBraceCompletionDefaultProvider))]
 [ContentType(OdinContentType.Name)]
 [BracePair('(', ')')]

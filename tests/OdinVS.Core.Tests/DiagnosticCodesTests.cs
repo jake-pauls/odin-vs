@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace OdinVS.Core.Tests;
 
-// Keeps the diagnostic code table in docs/user-guide.md, OdinDiagnosticCodes and the literal in Sdk.targets from drifting apart.
+// Keeps the diagnostic code table in docs/reference/diagnostics.md, OdinDiagnosticCodes and the literal in Sdk.targets from drifting apart.
 [TestClass]
 public sealed class DiagnosticCodesTests
 {
@@ -26,12 +26,12 @@ public sealed class DiagnosticCodesTests
     [TestMethod]
     public void TheUserGuideTableListsExactlyTheCodesInTheClass()
     {
-        string guide = File.ReadAllText(Path.Combine(RepoPaths.Root, "docs", "user-guide.md"));
+        string guide = File.ReadAllText(Path.Combine(RepoPaths.Root, "docs", "reference", "diagnostics.md"));
         string[] documented = Regex.Matches(guide, @"^\| `(ODIN\d{4})` \|", RegexOptions.Multiline)
             .Cast<Match>()
             .Select(match => match.Groups[1].Value)
             .ToArray();
-        CollectionAssert.AreEquivalent(CodesInClass(), documented, "docs/user-guide.md diagnostic table and OdinDiagnosticCodes differ");
+        CollectionAssert.AreEquivalent(CodesInClass(), documented, "docs/reference/diagnostics.md diagnostic table and OdinDiagnosticCodes differ");
     }
 
     [TestMethod]

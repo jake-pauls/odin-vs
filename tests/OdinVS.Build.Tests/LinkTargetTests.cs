@@ -49,6 +49,22 @@ public sealed class LinkTargetTests
     }
 
     [TestMethod]
+    public void CleanIgnoresListedFilesOutsideTheOutputFolder()
+    {
+        string work = MsBuildSandbox.Instance.CopySamples("LinkApp", "LinkDll");
+        Assert.AreEqual(0, Build(work, "LinkApp").ExitCode);
+        string bystander = Path.Combine(work, "bystander.txt");
+        File.WriteAllText(bystander, "keep me");
+        string list = Path.Combine(work, "LinkApp", "obj", "Debug", "LinkApp.FileListAbsolute.txt");
+        File.AppendAllText(list, bystander + Environment.NewLine + Path.Combine(work, "LinkApp", "bin", "Debug", "..", "..", "..", "bystander.txt") + Environment.NewLine);
+
+        MsBuildResult clean = Build(work, "LinkApp", "Clean");
+        Assert.AreEqual(0, clean.ExitCode, clean.Output);
+        Assert.IsTrue(File.Exists(bystander), "a path outside the output folder in the list must not be deleted");
+        Assert.IsFalse(File.Exists(Path.Combine(work, "LinkApp", "bin", "Debug", "LinkDll.dll")), "the legitimate entry still goes");
+    }
+
+    [TestMethod]
     public void CleanRemovesTheDllsCopiedFromLinkReferences()
     {
         string work = MsBuildSandbox.Instance.CopySamples("LinkApp", "LinkDll");
@@ -100,6 +116,19 @@ public sealed class LinkTargetTests
     }
 
     [TestMethod]
+    public void ALibraryPathWithAQuoteIsReportedAndNeverReachesOdin()
+    {
+        string work = MsBuildSandbox.Instance.CopySamples("LinkApp", "LinkDll");
+        // In the project file, not /p: (a quote on the MSBuild command line is mangled before the task runs).
+        string dllProject = Path.Combine(work, "LinkDll", "LinkDll.odinproj");
+        File.WriteAllText(dllProject, File.ReadAllText(dllProject).Replace("</Project>", "<PropertyGroup><OdinLinkLibrary>C:\\x\" -pre-build-command:calc.exe \"\\y.lib</OdinLinkLibrary></PropertyGroup>\n</Project>"));
+        MsBuildResult build = Build(work, "LinkApp");
+        Assert.AreNotEqual(0, build.ExitCode, build.Output);
+        StringAssert.Contains(build.Output, "ODIN0110");
+        Assert.IsFalse(build.Output.Split('\n').Any(line => line.Contains("ODIN: ") && line.Contains("-pre-build-command")), "odin must not be started with the injected value");
+    }
+
+    [TestMethod]
     public void AChangedDllRebuildsTheExecutable()
     {
         string work = MsBuildSandbox.Instance.CopySamples("LinkApp", "LinkDll");
@@ -135,7 +164,7 @@ public sealed class LinkTargetTests
     [TestMethod]
     public void ALibraryProjectAsksOdinForAStaticLibrary()
     {
-        // Pins the wiring only: with Odin dev-2026-10 the static-library link fails on Windows (see docs/milestones.md, M6), so the
+        // Pins the wiring only: with Odin dev-2026-10 the static-library link fails on Windows (see docs/internal/milestones.md, M6), so the
         // exit code is not asserted. When odin is fixed, assert the .lib exists here.
         string work = MsBuildSandbox.Instance.CopySamples("LinkLib");
         MsBuildResult build = Build(work, "LinkLib");

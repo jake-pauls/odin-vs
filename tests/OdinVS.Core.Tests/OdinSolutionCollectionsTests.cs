@@ -28,6 +28,17 @@ public sealed class OdinSolutionCollectionsTests
     }
 
     [TestMethod]
+    [DataRow("bad\"name", @"C:\s\A")]
+    [DataRow("ok", "C:\\s\\A\" -foo")]
+    [DataRow("", @"C:\s\A")]
+    public void ACollectionWithAQuoteOrAnEmptyValueIsReportedAndNotGivenToTheLanguageServer(string name, string root)
+    {
+        OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([Project("A", name, root), Project("B", "fine", @"C:\s\B")]);
+        Assert.AreEqual("fine", result.Collections.Single().Key);
+        Assert.AreEqual(OdinDiagnosticCodes.InvalidCollection, result.Problems.Single().Code);
+    }
+
+    [TestMethod]
     public void TheSameNameAtTheSameRootIsNotACollision()
     {
         OdinSolutionCollectionsResult result = OdinSolutionCollections.Compute([Project("A", "x", @"C:\s\shared"), Project("B", "x", @"c:\S\shared\")]);

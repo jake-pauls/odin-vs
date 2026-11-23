@@ -15,11 +15,11 @@
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
     <Title>Odin.Sdk (LOCAL ONLY - DO NOT PUBLISH)</Title>
     <Description>LOCAL ONLY - DO NOT PUBLISH. Private development build of the odin-vs MSBuild SDK. Not a release; do not push to nuget.org or any shared feed.</Description>
-    <Authors>odin-vs (private)</Authors>
-    <Copyright>Private, not licensed for redistribution.</Copyright>
+    <Authors>odin-vs</Authors>
+    <Copyright>Copyright (c) 2026 Jake Pauls. MIT licensed source; this package is a local build and is not published.</Copyright>
     <PackageTags>LOCAL-ONLY;DO-NOT-PUBLISH;private</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageLicenseExpression></PackageLicenseExpression>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\nuget\</PackageOutputPath>
   </PropertyGroup>
   <ItemGroup>

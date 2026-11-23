@@ -47,10 +47,25 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
 
         foreach (ITaskItem linkInput in LinkInputs)
         {
+            if (!OdinBuildArguments.IsSafeArgumentValue(linkInput.ItemSpec))
+            {
+                Log.LogError(null, OdinDiagnosticCodes.InvalidCollection, null, linkInput.ItemSpec, 0, 0, 0, 0, "The library to link '{0}' has an empty path or one containing a double quote or control character, which cannot be passed to odin. Fix the OdinLinkLibrary or TargetName of the referenced project.", linkInput.ItemSpec);
+                return false;
+            }
+
             string linkerPath = OdinBuildArguments.ToLinkerPath(linkInput.ItemSpec, WorkingDirectory);
             if (OdinBuildArguments.HasWhitespace(linkerPath))
             {
                 Log.LogError(null, OdinDiagnosticCodes.LinkPathHasSpaces, null, linkInput.ItemSpec, 0, 0, 0, 0, "odin splits -extra-linker-flags on spaces, so the library '{0}' cannot be linked from a path with spaces. Move the referenced project's output (or this project) to a folder without spaces, or set OutDir on the referenced project.", linkInput.ItemSpec);
+                return false;
+            }
+        }
+
+        foreach (ITaskItem collection in Collections)
+        {
+            if (!OdinBuildArguments.IsSafeArgumentValue(collection.ItemSpec) || !OdinBuildArguments.IsSafeArgumentValue(collection.GetMetadata("Path")))
+            {
+                Log.LogError(null, OdinDiagnosticCodes.InvalidCollection, null, collection.ItemSpec, 0, 0, 0, 0, "The collection '{0}' has an empty name or path, or one containing a double quote or control character, which cannot be passed to odin. Fix OdinCollectionName and OdinCollectionRoot, or the Path of the OdinCollection item.", collection.ItemSpec);
                 return false;
             }
         }
@@ -171,7 +186,8 @@ public sealed class OdinBuild : Microsoft.Build.Utilities.Task, ICancelableTask
     {
         try
         {
-            ProcessStartInfo startInfo = new("taskkill", $"/T /F /PID {process.Id}")
+            // Full path: a bare name is searched in the current directory (the project folder) before System32.
+            ProcessStartInfo startInfo = new(Path.Combine(Environment.SystemDirectory, "taskkill.exe"), $"/T /F /PID {process.Id}")
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,

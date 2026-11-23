@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace OdinVS.Core.Tests;
 
 // Tier 1: odin.pkgdef is hand-written, so the package and UI-context GUIDs it registers must stay equal to the constants in
-// OdinVSPackage. A mismatch loads nothing and VS reports nothing (see docs/pitfalls.md).
+// OdinVSPackage. A mismatch loads nothing and VS reports nothing (see docs/dev/pitfalls.md).
 [TestClass]
 public sealed class PkgdefGuidTests
 {

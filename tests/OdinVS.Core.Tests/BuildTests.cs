@@ -14,7 +14,7 @@ public sealed class OdinErrorParserTests
         Assert.HasCount(2, output.Diagnostics);
         OdinDiagnostic first = output.Diagnostics[0];
         Assert.IsFalse(first.IsWarning);
-        Assert.AreEqual(@"D:\Projects\Vibe\odin-vs\tests\samples\BrokenOdin\src\main.odin", first.File);
+        Assert.AreEqual(@"C:\src\odin-vs\tests\samples\BrokenOdin\src\main.odin", first.File);
         Assert.AreEqual(6, first.Line);
         Assert.AreEqual(11, first.Column);
         Assert.AreEqual(17, first.EndColumn);
@@ -161,6 +161,18 @@ public sealed class OdinBuildArgumentsTests
     public void ALibraryPathWithSpacesBecomesRelativeToTheWorkingDirectory(string path, string workingDirectory, string expected)
     {
         Assert.AreEqual(expected, OdinBuildArguments.ToLinkerPath(path, workingDirectory));
+    }
+
+    [TestMethod]
+    [DataRow("Lib", true)]
+    [DataRow(@"C:\my work\Lib", true)]
+    [DataRow("", false)]
+    [DataRow("a\"b", false)]
+    [DataRow("a\"-define:X=1 \"b", false)]
+    [DataRow("a\nb", false)]
+    public void AnArgumentValueWithAQuoteOrControlCharacterIsRejected(string value, bool expected)
+    {
+        Assert.AreEqual(expected, OdinBuildArguments.IsSafeArgumentValue(value));
     }
 
     [TestMethod]

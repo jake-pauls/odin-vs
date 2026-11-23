@@ -211,6 +211,13 @@
     <ReadLinesFromFile File="$(_OdinCopiedListPath)" Condition="Exists('$(_OdinCopiedListPath)')">
       <Output TaskParameter="Lines" ItemName="_OdinCopiedToDelete" />
     </ReadLinesFromFile>
+    <!-- The list is a plain file under obj\; only delete entries that sit directly in the output folder, so a doctored list cannot delete anything else. -->
+    <PropertyGroup>
+      <_OdinCleanOutputDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$([System.IO.Path]::GetDirectoryName('$(TargetPath)'))'))</_OdinCleanOutputDirectory>
+    </PropertyGroup>
+    <ItemGroup>
+      <_OdinCopiedToDelete Remove="@(_OdinCopiedToDelete)" Condition="'%(RootDir)%(Directory)' != '$(_OdinCleanOutputDirectory)'" />
+    </ItemGroup>
     <Delete Files="$(TargetPath);$(_OdinPdbPath);@(_OdinImportLibOutput);@(_OdinCopiedToDelete);$(_OdinCopiedListPath)" />
   </Target>
 
